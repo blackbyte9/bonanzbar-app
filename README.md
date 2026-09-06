@@ -70,7 +70,9 @@ Der Betriebsmodus ist in dieser ersten Version absichtlich ein expliziter Admin-
 
 Die Entwicklung verwendet Prisma mit einer lokalen SQLite-Datei unter `apps/web/prisma/dev.db`: ohne weitere Konfiguration, mit typisierten Abfragen, Schemamigrationen und Daten, die Neustarts überstehen. Inventarmengen sind Momentaufnahmen in unveränderlichen `StockCount`-Einträgen. Der Verkaufsbericht berechnet für jeden Artikel den Abgang zwischen zwei abgeschlossenen Zählungen und weist derzeit darauf hin, dass Nachlieferungen noch nicht gegengerechnet werden.
 
-Für den Produktivbetrieb kann Prisma dasselbe Modell und relationale Datenbankdesign weiterverwenden. Ändere den Prisma-Datenquellenanbieter auf `postgresql` oder einen von Strato unterstützten verwalteten SQL-Dienst, setze `DATABASE_URL`, erstelle und wende die Migration in der CI-Umgebung mit `prisma migrate deploy` an und importiere SQLite-Daten einmalig nach SQL. Führe `prisma migrate dev` nicht in der Produktionsumgebung aus.
+Für den Produktivbetrieb kann Prisma dasselbe Modell und relationale Datenbankdesign weiterverwenden. Eine MariaDB-Datenbank wird durch Primas `mysql`-Datenquellenanbieter unterstützt; eine separate MySQL-Datenbank ist nicht erforderlich. Setze den Anbieter vor dem ersten Produktiv-Rollout auf `mysql` und hinterlege `DATABASE_URL` im Format `mysql://BENUTZER:PASSWORT@HOST:3306/DATENBANK`.
+
+Die vorhandenen Migrationen sind für die lokale SQLite-Entwicklung erstellt und können nicht direkt auf MariaDB angewendet werden. Erzeuge vor dem ersten MariaDB-Rollout deshalb aus dem aktuellen Prisma-Schema eine neue MariaDB-Ausgangsmigration und wende diese in der CI-Umgebung mit `prisma migrate deploy` an. Behalte entweder ein separates SQLite-Schema für die lokale Entwicklung bei oder stelle auch die Entwicklungsumgebung auf MariaDB um. Importiere vorhandene SQLite-Daten nur einmalig nach SQL und führe `prisma migrate dev` nicht in der Produktionsumgebung aus.
 
 ## Spätere Bereitstellung bei Strato
 
