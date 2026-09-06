@@ -1,0 +1,25 @@
+{
+  "name": "bonanzbar-app",
+  "private": true,
+  "version": "0.1.0",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev:web": "npm run dev --workspace=@bonanzbar/web",
+    "dev:mobile": "npm run start --workspace=@bonanzbar/mobile",
+    "build": "npm run build --workspace=@bonanzbar/web",
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "db:generate": "npm run db:generate --workspace=@bonanzbar/web",
+    "db:migrate": "npm run db:migrate --workspace=@bonanzbar/web",
+    "db:seed": "npm run db:seed --workspace=@bonanzbar/web"
+  },
+  "dependencies": {
+    "react": "19.1.0",
+    "react-dom": "19.1.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.7.3"
+  }
+}

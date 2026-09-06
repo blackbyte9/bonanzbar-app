@@ -1,0 +1,159 @@
+generator client {
+  provider = "prisma-client-js"
+  output   = "../generated/prisma"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  ADMIN
+  MANAGER
+  USER
+}
+
+enum CountStatus {
+  DRAFT
+  FINALIZED
+}
+
+enum ShoppingStatus {
+  OPEN
+  PURCHASED
+}
+
+enum BillStatus {
+  OPEN
+  PAID
+}
+
+enum PriceMode {
+  PUBLIC
+  HELPER
+  DYNAMIC
+}
+
+model User {
+  id           String        @id @default(cuid())
+  name         String
+  email        String        @unique
+  role         Role          @default(USER)
+  priceMode    PriceMode     @default(DYNAMIC)
+  active       Boolean       @default(true)
+  consumptions Consumption[]
+  bills        Bill[]        @relation("BillRecipient")
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+}
+
+model InventoryItem {
+  id            String          @id @default(cuid())
+  name          String
+  category      String
+  unit          String          @default("bottle")
+  reorderLevel  Int             @default(0)
+  priceCents    Int
+  helperPriceCents Int             @default(0)
+  active        Boolean         @default(true)
+  countLines    StockCountLine[]
+  shoppingItems ShoppingItem[]
+  consumption   Consumption[]
+  billLines     BillLine[]
+  createdAt     DateTime        @default(now())
+  updatedAt     DateTime        @updatedAt
+
+  @@unique([name, unit])
+}
+
+model StockCount {
+  id          String           @id @default(cuid())
+  label       String
+  status      CountStatus      @default(FINALIZED)
+  countedAt   DateTime         @default(now())
+  createdBy   String
+  notes       String?
+  lines       StockCountLine[]
+  createdAt   DateTime         @default(now())
+
+  @@index([countedAt])
+}
+
+model StockCountLine {
+  id        String        @id @default(cuid())
+  countId   String
+  itemId    String
+  quantity  Int
+  count     StockCount    @relation(fields: [countId], references: [id], onDelete: Cascade)
+  item      InventoryItem @relation(fields: [itemId], references: [id])
+
+  @@unique([countId, itemId])
+}
+
+model ShoppingList {
+  id        String         @id @default(cuid())
+  title     String
+  status    ShoppingStatus @default(OPEN)
+  createdBy String
+  createdAt DateTime       @default(now())
+  items     ShoppingItem[]
+}
+
+model ShoppingItem {
+  id                   String         @id @default(cuid())
+  listId               String
+  itemId               String?
+  name                 String
+  quantity             Int
+  proposedCategory     String?
+  proposedUnit         String?
+  proposedReorderLevel Int?
+  proposedPriceCents   Int?
+  proposedHelperPriceCents Int?
+  purchased            Boolean        @default(false)
+  list                 ShoppingList   @relation(fields: [listId], references: [id], onDelete: Cascade)
+  item                 InventoryItem? @relation(fields: [itemId], references: [id])
+}
+
+model Consumption {
+  id        String        @id @default(cuid())
+  userId    String
+  itemId    String
+  quantity  Int           @default(1)
+  unitCents Int           @default(0)
+  occurredAt DateTime     @default(now())
+  user      User          @relation(fields: [userId], references: [id])
+  item      InventoryItem @relation(fields: [itemId], references: [id])
+
+  @@index([occurredAt])
+}
+
+model BarSettings {
+  id               String   @id @default("default")
+  isOfficiallyOpen Boolean  @default(false)
+  updatedBy        String?
+  updatedAt        DateTime @updatedAt
+}
+
+model Bill {
+  id          String      @id @default(cuid())
+  recipientId String
+  status      BillStatus  @default(OPEN)
+  totalCents  Int
+  issuedAt    DateTime    @default(now())
+  dueAt       DateTime?
+  recipient   User        @relation("BillRecipient", fields: [recipientId], references: [id])
+  lines       BillLine[]
+}
+
+model BillLine {
+  id          String        @id @default(cuid())
+  billId      String
+  itemId      String?
+  description String
+  quantity    Int
+  unitCents   Int
+  bill        Bill          @relation(fields: [billId], references: [id], onDelete: Cascade)
+  item        InventoryItem? @relation(fields: [itemId], references: [id])
+}

@@ -1,0 +1,14 @@
+node_modules/
+.next/
+.next-validation/
+.expo/
+dist/
+coverage/
+*.tsbuildinfo
+*.db
+*.db-journal
+.env
+.env.local
+apps/web/prisma/dev.db
+apps/web/prisma/dev.db-journal
+apps/web/generated/
