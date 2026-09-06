@@ -1,16 +1,16 @@
 # Bonanzbar
 
-Bonanzbar is a TypeScript monorepo for running a shared bar: inventory cataloguing, stock counts, purchasing, member tabs, and sales estimates.
+Bonanzbar ist ein TypeScript-Monorepo für den Betrieb einer gemeinschaftlich genutzten Bar: Inventarkatalog, Bestandszählungen, Einkauf, Mitgliederrechnungen und Verkaufsberichte.
 
-| Workspace | Purpose |
+| Arbeitsbereich | Zweck |
 |---|---|
-| `apps/web` | Next.js operational dashboard and HTTP API |
-| `apps/mobile` | Expo / React Native companion for iOS and Android |
-| `packages/shared` | Role permissions, domain types, and formatting utilities |
+| `apps/web` | Next.js-Betriebsdashboard und HTTP-API |
+| `apps/mobile` | Expo-/React-Native-Begleit-App für iOS und Android |
+| `packages/shared` | Rollenrechte, Domänentypen und Formatierungswerkzeuge |
 
-## Quick start
+## Schnellstart
 
-**Prerequisites:** Node.js 20.18+ and npm. The initial application uses no Docker or external services.
+**Voraussetzungen:** Node.js 20.18+ und npm. Die erste Anwendungsversion benötigt weder Docker noch externe Dienste.
 
 ```powershell
 npm install
@@ -20,34 +20,34 @@ npm run db:seed
 npm run dev:web
 ```
 
-Open [http://localhost:3000](http://localhost:3000). The local sign-in screen has intentionally seeded Admin, Manager, and Member accounts so each role can be tested:
+Öffne anschließend [http://localhost:3000](http://localhost:3000). Der lokale Anmeldebildschirm enthält bewusst vorbereitete Konten für Administration, Barleitung und Mitglied, damit jede Rolle ausprobiert werden kann:
 
-| Role | Local account | Scope |
+| Rolle | Lokales Konto | Berechtigungen |
 |---|---|---|
-| Administration | Ada Administration | Manage inventory and member accounts |
-| Barleitung | Max Barleitung | Stock counts, shopping lists, bills, and count-to-count sales reports |
-| Mitglied | Mia Mitglied | See available stock and record their own consumption |
+| Administration | Ada Administration | Inventar und Mitgliederkonten verwalten |
+| Barleitung | Max Barleitung | Bestandszählungen, Einkaufslisten, Rechnungen und Verkaufsberichte zwischen zwei Zählungen |
+| Mitglied | Mia Mitglied | Verfügbares Inventar sehen und den eigenen Konsum erfassen |
 
-Run the mobile app in another terminal:
+Starte die mobile App in einem weiteren Terminal:
 
 ```powershell
-$env:EXPO_PUBLIC_API_URL="http://192.168.x.x:3000" # use your computer's LAN address for a physical device
+$env:EXPO_PUBLIC_API_URL="http://192.168.x.x:3000" # LAN-Adresse des Computers für ein physisches Gerät verwenden
 npm run dev:mobile
 ```
 
-For an Android emulator, `http://10.0.2.2:3000` normally reaches the host; use `http://localhost:3000` for an iOS simulator. The app defaults to localhost if `EXPO_PUBLIC_API_URL` is not supplied.
+Für einen Android-Emulator ist der Host üblicherweise über `http://10.0.2.2:3000` erreichbar; für den iOS-Simulator verwende `http://localhost:3000`. Ohne `EXPO_PUBLIC_API_URL` verwendet die App standardmäßig localhost.
 
-## Authorization and security boundaries
+## Autorisierung und Sicherheitsgrenzen
 
-The API verifies authorization server-side for every mutation; the UI is only a convenience layer. Role selection never arrives at the business routes:
+Die API überprüft jede Änderung serverseitig; die Oberfläche ist nur eine Bedienhilfe. Die Rollenauswahl wird nie an Geschäftslogik-Endpunkte übergeben:
 
-- Inventory and user creation require `ADMIN`.
-- Counts, shopping lists, bills, and sold-item reports require `MANAGER`.
-- Consumption records always use the authenticated user identity, never a client-provided user ID.
-- Bill line prices are retrieved from the inventory catalog on the server, preventing client-side price changes.
-- Zod validates every mutation request and Prisma parameterizes all database access.
+- Das Anlegen von Inventarartikeln und Benutzern erfordert `ADMIN`.
+- Bestandszählungen, Einkaufslisten, Rechnungen und Verkaufsberichte erfordern `MANAGER`.
+- Konsumeinträge verwenden immer die Identität des angemeldeten Benutzers, niemals eine vom Client übermittelte Benutzer-ID.
+- Einzelpreise für Rechnungen berechnet der Server anhand des Inventars und der Preisregel; der Client kann Preise nicht manipulieren.
+- Zod validiert jede Änderungsanfrage und Prisma parametrisiert alle Datenbankzugriffe.
 
-The local role selector intentionally uses development-only seeded bearer tokens to make the foundation immediately explorable. `POST /api/auth/demo` returns 404 under `NODE_ENV=production` (and can be disabled locally with `DEMO_AUTH_ENABLED=false`). It is **not** production authentication. Before deployment, replace `lib/auth.ts` with a real identity-provider/session integration, remove local demo tokens, require HTTPS cookies or short-lived bearer tokens, and set a strong `AUTH_SECRET`.
+Die lokale Rollenauswahl verwendet absichtlich Bearer-Token nur für die Entwicklung, damit die Grundlage sofort ausprobiert werden kann. `POST /api/auth/demo` gibt unter `NODE_ENV=production` den Status 404 zurück und kann lokal mit `DEMO_AUTH_ENABLED=false` deaktiviert werden. Dies ist **keine** Produktionsauthentifizierung. Vor dem Produktivbetrieb muss `lib/auth.ts` durch eine echte Identitätsanbieter-/Sitzungsintegration ersetzt werden. Entferne die lokalen Demo-Token, erzwinge HTTPS-Cookies oder kurzlebige Bearer-Token und setze ein starkes `AUTH_SECRET`.
 
 ## Neue Artikel aus Einkaufslisten
 
@@ -66,17 +66,17 @@ Zusätzlich kann die Administration pro Person wählen, ob sie immer den regulä
 
 Der Betriebsmodus ist in dieser ersten Version absichtlich ein expliziter Admin-Schalter, da keine festen Öffnungszeiten vorgegeben wurden. Dadurch kann er auch bei Sonderveranstaltungen, Aufbau oder Abbau zuverlässig gesetzt werden.
 
-## Persistence and production migration
+## Persistenz und Migrationsweg für den Produktivbetrieb
 
-Development uses Prisma with a local SQLite file at `apps/web/prisma/dev.db`: zero configuration, typed queries, schema migrations, and data that survives restarts. Inventory quantities are snapshots in immutable `StockCount` records. The sold-items report calculates each item’s decrease between two finalized counts; the report currently labels that restocks are not yet netted out.
+Die Entwicklung verwendet Prisma mit einer lokalen SQLite-Datei unter `apps/web/prisma/dev.db`: ohne weitere Konfiguration, mit typisierten Abfragen, Schemamigrationen und Daten, die Neustarts überstehen. Inventarmengen sind Momentaufnahmen in unveränderlichen `StockCount`-Einträgen. Der Verkaufsbericht berechnet für jeden Artikel den Abgang zwischen zwei abgeschlossenen Zählungen und weist derzeit darauf hin, dass Nachlieferungen noch nicht gegengerechnet werden.
 
-For production, Prisma keeps the same model and relational design. Change the Prisma datasource provider to `postgresql` (or a Strato-supported managed SQL service), set `DATABASE_URL`, create and apply the migration in CI with `prisma migrate deploy`, then run a one-time SQLite-to-SQL import. Do not run `prisma migrate dev` in production.
+Für den Produktivbetrieb kann Prisma dasselbe Modell und relationale Datenbankdesign weiterverwenden. Ändere den Prisma-Datenquellenanbieter auf `postgresql` oder einen von Strato unterstützten verwalteten SQL-Dienst, setze `DATABASE_URL`, erstelle und wende die Migration in der CI-Umgebung mit `prisma migrate deploy` an und importiere SQLite-Daten einmalig nach SQL. Führe `prisma migrate dev` nicht in der Produktionsumgebung aus.
 
-## Hosting on Strato later
+## Spätere Bereitstellung bei Strato
 
-The web app is configured with Next.js `output: "standalone"` so `npm run build` creates a compact Node deployment bundle. Confirm that the selected Strato package supports a persistent Node process and a managed SQL database; static-only packages cannot host the API routes. Supply production secrets through the hosting control panel rather than committed `.env` files.
+Die Web-App ist mit Next.js `output: "standalone"` konfiguriert, sodass `npm run build` ein kompaktes Node-Bereitstellungspaket erzeugt. Prüfe, dass das gewählte Strato-Paket einen dauerhaft laufenden Node-Prozess und eine verwaltete SQL-Datenbank unterstützt; Pakete für rein statische Websites können die API-Endpunkte nicht bereitstellen. Hinterlege Produktionsgeheimnisse über die Verwaltungsoberfläche des Anbieters, nicht in eingecheckten `.env`-Dateien.
 
-## Useful commands
+## Nützliche Befehle
 
 ```powershell
 npm run typecheck
