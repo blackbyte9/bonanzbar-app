@@ -78,6 +78,20 @@ Die vorhandenen Migrationen sind für die lokale SQLite-Entwicklung erstellt und
 
 Die Web-App ist mit Next.js `output: "standalone"` konfiguriert, sodass `npm run build` ein kompaktes Node-Bereitstellungspaket erzeugt. Prüfe, dass das gewählte Strato-Paket einen dauerhaft laufenden Node-Prozess und eine verwaltete SQL-Datenbank unterstützt; Pakete für rein statische Websites können die API-Endpunkte nicht bereitstellen. Hinterlege Produktionsgeheimnisse über die Verwaltungsoberfläche des Anbieters, nicht in eingecheckten `.env`-Dateien.
 
+## Bereitstellung mit Vercel
+
+Vercel kann die Next.js-Web-App direkt aus dem GitHub-Repository bereitstellen. Die Git-Integration erstellt automatisch Vorschauen für Pull Requests und eine Produktionsbereitstellung für jeden Push auf den Produktions-Branch `main`.
+
+1. Melde dich bei Vercel mit dem GitHub-Konto an und importiere `blackbyte9/bonanzbar-app` als neues Projekt.
+2. Wähle als **Root Directory** `apps/web` und als Framework **Next.js**.
+3. Setze den Build-Befehl auf `npm run build`. Dieser erzeugt vor dem Next.js-Build den nicht eingecheckten Prisma-Client.
+4. Hinterlege die benötigten Umgebungsvariablen ausschließlich in Vercel. Verwende für Vorschauen eine von der Produktionsdatenbank getrennte Datenbank, damit Testdaten keine echten Bestände oder Rechnungen verändern.
+5. Füge unter **Settings → Domains** `app.bonanzbar.de` hinzu. Strato muss dafür für die Subdomain den von Vercel angezeigten CNAME-Eintrag erhalten; Vercel richtet das TLS-Zertifikat anschließend selbst ein.
+
+Die lokale SQLite-Datenbank ist nicht für Vercel geeignet, da Serverless-Funktionen keinen dauerhaften lokalen Datenträger bereitstellen. Verwende für Vercel daher eine verwaltete, von außen erreichbare PostgreSQL-Datenbank, beispielsweise Neon über den Vercel Marketplace. Vor dem ersten Rollout muss das Prisma-Schema auf `postgresql` umgestellt und eine neue PostgreSQL-Ausgangsmigration erzeugt werden; die vorhandenen SQLite-Migrationen können nicht wiederverwendet werden.
+
+Die aktuelle Anmeldung ist absichtlich nur für die lokale Entwicklung vorgesehen und wird in der Produktionsumgebung deaktiviert. Vor einer öffentlichen Bereitstellung muss deshalb eine echte Anmeldung mit sicheren Sitzungen und einem in Vercel gesetzten `AUTH_SECRET` ergänzt werden. Führe Datenbankmigrationen anschließend in einer gesonderten, geschützten CI-Aufgabe mit `prisma migrate deploy` aus, nicht während eines Vercel-Builds.
+
 ## Nützliche Befehle
 
 ```powershell
