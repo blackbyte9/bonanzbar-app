@@ -10,7 +10,7 @@ Bonanzbar ist ein TypeScript-Monorepo für den Betrieb einer gemeinschaftlich ge
 
 ## Architektur und Umgebungen
 
-Die Web-App wird mit Vercel und einer über den Vercel Marketplace verbundenen Neon-PostgreSQL-Datenbank betrieben. Die Neon-Integration stellt die Verbindung mit dem Namen `DB_DATABASE_URL` bereit. Der `DB_`-Präfix ist absichtlich Teil der Konfiguration und muss nicht entfernt werden.
+Die Web-App wird mit Vercel und einer über den Vercel Marketplace verbundenen Neon-PostgreSQL-Datenbank betrieben. Prisma verwendet die Projektvariable `DATABASE_URL`. Falls die Neon-Integration zusätzlich `DB_*`-Variablen anlegt, bleiben diese unverändert; setze oder verweise `DATABASE_URL` je Umgebung auf die passende Neon-Verbindungs-URL.
 
 | Umgebung | Git-Auslöser | Datenbank |
 |---|---|---|
@@ -24,7 +24,7 @@ Preview-Branches dürfen niemals für echte Bar-Daten verwendet werden. Sie dien
 
 **Voraussetzungen:** Node.js 20.18+, npm und ein Neon-Branch für die Entwicklung.
 
-Erstelle `apps/web/.env.local` anhand von `apps/web/.env.example`. Trage die URL des Neon-Entwicklungs-Branchs als `DB_DATABASE_URL` ein. Setze zusätzlich einen eigenen `AUTH_SECRET` mit mindestens 32 zufälligen Zeichen. Diese Datei bleibt lokal und wird nicht eingecheckt.
+Erstelle `apps/web/.env.local` anhand von `apps/web/.env.example`. Trage die URL des Neon-Entwicklungs-Branchs als `DATABASE_URL` ein. Setze zusätzlich einen eigenen `AUTH_SECRET` mit mindestens 32 zufälligen Zeichen. Diese Datei bleibt lokal und wird nicht eingecheckt.
 
 ```powershell
 npm install
@@ -92,7 +92,7 @@ Der Betriebsmodus ist in dieser ersten Version absichtlich ein expliziter Admin-
 
 1. Importiere `blackbyte9/bonanzbar-app` als Vercel-Projekt, wähle **Root Directory** `apps/web` und das Framework **Next.js**.
 2. Setze den Build-Befehl auf `npm run build`. Dieser führt `prisma migrate deploy`, `prisma generate` und anschließend den Next.js-Build aus.
-3. Verbinde die Neon-Datenbank in Vercel mit **Production** und **Preview**. Die automatisch bereitgestellte `DB_DATABASE_URL` muss dafür unverändert bleiben.
+3. Verbinde die Neon-Datenbank in Vercel mit **Production** und **Preview**. Setze `DATABASE_URL` in jeder Umgebung auf die jeweilige Neon-Verbindungs-URL: primärer Neon-Branch für Production, automatischer Neon-Branch für Preview.
 4. Setze `AUTH_SECRET` getrennt für Production und Preview. Setze `INITIAL_ADMIN_SETUP_TOKEN` nur für Production und entferne ihn nach dem Erstzugang.
 5. Stelle sicher, dass der erste Deployment-Branch `main` ist. Die Migration `20260912110000_initial_postgresql` wird beim ersten Production-Build automatisch auf den neuen Neon-Branch angewandt.
 6. Füge unter **Settings → Domains** `app.bonanzbar.de` hinzu. Strato benötigt dafür den von Vercel angezeigten CNAME-Eintrag für die Subdomain. Vercel richtet das TLS-Zertifikat ein.
