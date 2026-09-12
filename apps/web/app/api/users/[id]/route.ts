@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
+import { hasRole, normalizeRoles } from "@bonanzbar/shared";
 import { requirePermission } from "@/lib/auth";
 import { jsonError, requestJson } from "@/lib/http";
 import { hashPassword } from "@/lib/password";
@@ -8,7 +9,7 @@ import { prisma } from "@/lib/prisma";
 const updateSchema = z.object({
   name: z.string().trim().min(2).max(100).optional(),
   email: z.string().trim().email().max(254).toLowerCase().optional(),
-  role: z.enum(["ADMIN", "MANAGER", "USER"]).optional(),
+  roles: z.array(z.enum(["ADMIN", "MANAGER", "USER"])).min(1).max(3).optional(),
   priceMode: z.enum(["PUBLIC", "HELPER", "DYNAMIC"]).optional(),
   active: z.boolean().optional(),
   password: z.string().min(12).max(128).optional(),
@@ -20,18 +21,19 @@ export async function PATCH(request: Request, context: { params: Promise<{ id: s
   try {
     const { id } = await context.params;
     const input = updateSchema.parse(await requestJson(request));
-    if (id === actor.id && (input.active === false || (input.role && input.role !== "ADMIN"))) {
-      return NextResponse.json({ error: "Administratoren können ihr eigenes Konto nicht deaktivieren oder herabstufen." }, { status: 400 });
-    }
     const existing = await prisma.user.findUnique({ where: { id } });
     if (!existing) return NextResponse.json({ error: "Benutzer nicht gefunden." }, { status: 404 });
-    const { password, ...update } = input;
+    const nextRoles = input.roles ? normalizeRoles(input.roles) : normalizeRoles(existing.roles);
+    if (id === actor.id && (input.active === false || !hasRole(nextRoles, "ADMIN"))) {
+      return NextResponse.json({ error: "Administratoren können ihr eigenes Konto nicht deaktivieren oder die Administrationsrolle entfernen." }, { status: 400 });
+    }
+    const { password, roles, ...update } = input;
     const user = await prisma.user.update({
       where: { id },
-      data: { ...update, ...(password ? { passwordHash: await hashPassword(password) } : {}) },
-      select: { id: true, name: true, email: true, role: true, priceMode: true, active: true },
+      data: { ...update, ...(roles ? { roles: normalizeRoles(roles) } : {}), ...(password ? { passwordHash: await hashPassword(password) } : {}) },
+      select: { id: true, name: true, email: true, roles: true, priceMode: true, active: true },
     });
-    return NextResponse.json(user);
+    return NextResponse.json({ ...user, roles: normalizeRoles(user.roles) });
   } catch (error) {
     return jsonError(error);
   }

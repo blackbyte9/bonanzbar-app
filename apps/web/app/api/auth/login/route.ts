@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
+import { normalizeRoles } from "@bonanzbar/shared";
 import { jsonError, requestJson } from "@/lib/http";
 import { verifyPassword } from "@/lib/password";
 import { prisma } from "@/lib/prisma";
@@ -21,7 +22,7 @@ export async function POST(request: Request) {
 
     const token = createSessionToken(user.id);
     const response = NextResponse.json({
-      user: { id: user.id, name: user.name, email: user.email, role: user.role, priceMode: user.priceMode },
+      user: { id: user.id, name: user.name, email: user.email, roles: normalizeRoles(user.roles), priceMode: user.priceMode },
       ...(input.mobile ? { accessToken: token } : {}),
     });
     response.cookies.set({ name: sessionCookieName, value: token, ...sessionCookieOptions() });

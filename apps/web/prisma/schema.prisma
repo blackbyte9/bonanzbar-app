@@ -39,7 +39,7 @@ model User {
   id           String        @id @default(cuid())
   name         String
   email        String        @unique
-  role         Role          @default(USER)
+  roles        Role[]        @default([USER])
   priceMode    PriceMode     @default(DYNAMIC)
   active       Boolean       @default(true)
   passwordHash String?

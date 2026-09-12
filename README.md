@@ -46,6 +46,10 @@ npm run dev:web
 
 Die drei Demo-Konten verwenden bei der Passwortanmeldung jeweils `bonanzbar-demo`. Die Rollen-Auswahl mit Demo-Token existiert nur außerhalb der Produktionsumgebung und kann lokal mit `DEMO_AUTH_ENABLED=false` deaktiviert werden.
 
+## Additive Rollen
+
+Konten können mehrere Rollen gleichzeitig haben. In der Mitgliederverwaltung werden die Rollen per Auswahlfeld kombiniert. Ein Konto mit **Administration** erhält serverseitig automatisch zusätzlich **Barleitung** und **Mitglied**. Dadurch kann die Administration neben Inventar, Benutzerkonten und Preisen auch Bestandszählungen, Einkaufslisten, Rechnungen, Verkaufsberichte und den eigenen Konsum nutzen.
+
 Starte die mobile App in einem weiteren Terminal:
 
 ```powershell

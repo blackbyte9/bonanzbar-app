@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
+import { roles } from "@bonanzbar/shared";
 import { jsonError, requestJson } from "@/lib/http";
 import { hashPassword } from "@/lib/password";
 import { prisma } from "@/lib/prisma";
@@ -53,7 +54,7 @@ export async function POST(request: Request) {
             name: input.name,
             passwordHash,
             priceMode: "PUBLIC",
-            role: "ADMIN",
+            roles: [...roles],
           },
         });
       }
@@ -64,14 +65,14 @@ export async function POST(request: Request) {
           name: input.name,
           passwordHash,
           priceMode: "PUBLIC",
-          role: "ADMIN",
+          roles: [...roles],
         },
       });
     });
 
     const token = createSessionToken(user.id);
     const response = NextResponse.json({
-      user: { id: user.id, name: user.name, email: user.email, role: user.role, priceMode: user.priceMode },
+      user: { id: user.id, name: user.name, email: user.email, roles: [...roles], priceMode: user.priceMode },
     }, { status: 201 });
     response.cookies.set({ name: sessionCookieName, value: token, ...sessionCookieOptions() });
     return response;

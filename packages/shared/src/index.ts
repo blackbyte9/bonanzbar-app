@@ -39,8 +39,17 @@ const permissionsByRole: Record<Role, readonly Permission[]> = {
   USER: ["inventory:read", "consumption:create"],
 };
 
-export function hasPermission(role: Role, permission: Permission): boolean {
-  return permissionsByRole[role].includes(permission);
+export function normalizeRoles(assignedRoles: readonly Role[]): Role[] {
+  const normalized = roles.filter((role) => assignedRoles.includes(role));
+  return normalized.includes("ADMIN") ? [...roles] : normalized;
+}
+
+export function hasRole(assignedRoles: readonly Role[], role: Role): boolean {
+  return normalizeRoles(assignedRoles).includes(role);
+}
+
+export function hasPermission(assignedRoles: readonly Role[], permission: Permission): boolean {
+  return normalizeRoles(assignedRoles).some((role) => permissionsByRole[role].includes(permission));
 }
 
 export interface InventoryItemInput {

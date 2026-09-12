@@ -15,7 +15,7 @@ import {
 } from "react-native";
 
 type Item = { id: string; name: string; category: string; unit: string; priceCents: number; helperPriceCents: number; effectivePriceCents: number; reorderLevel: number; onHand: number };
-type Snapshot = { user: { name: string; role: Role }; inventory: Item[] };
+type Snapshot = { user: { name: string; roles: Role[] }; inventory: Item[] };
 
 const API_URL = process.env.EXPO_PUBLIC_API_URL ?? "http://localhost:3000";
 const demoTokens: Record<Role, string> = {
@@ -74,7 +74,7 @@ export default function App() {
       const body = await response.json();
       if (!response.ok || !body.accessToken) throw new Error(body.error ?? "Anmeldung fehlgeschlagen.");
       setAccessToken(body.accessToken);
-      setRole(body.user.role);
+      setRole(body.user.roles[0]);
       setPassword("");
     } catch (error) {
       Alert.alert("Anmeldung fehlgeschlagen", error instanceof Error ? error.message : "Bitte versuche es erneut.");
@@ -84,6 +84,7 @@ export default function App() {
   };
 
   const lowStock = useMemo(() => data?.inventory.filter((item) => item.onHand <= item.reorderLevel).length ?? 0, [data]);
+  const canRecordConsumption = data?.user.roles.includes("USER") ?? role === "USER";
   const recordDrink = async () => {
     if (!selectedItem) return;
     try {
@@ -126,12 +127,12 @@ export default function App() {
           keyExtractor={(item) => item.id}
           contentContainerStyle={styles.list}
           ListHeaderComponent={<>
-            <View style={styles.welcome}><Text style={styles.welcomeText}>Angemeldet als {data?.user.name ?? roleLabels[role]}</Text><Text style={styles.welcomeDetail}>{role === "USER" ? "Tippe einen Artikel an, um ihn deinem Konto hinzuzufügen." : lowStock === 1 ? "1 Artikel braucht Aufmerksamkeit." : `${lowStock} Artikel brauchen Aufmerksamkeit.`}</Text></View>
+            <View style={styles.welcome}><Text style={styles.welcomeText}>Angemeldet als {data?.user.name ?? roleLabels[role]}</Text><Text style={styles.welcomeDetail}>{canRecordConsumption ? "Tippe einen Artikel an, um ihn deinem Konto hinzuzufügen." : lowStock === 1 ? "1 Artikel braucht Aufmerksamkeit." : `${lowStock} Artikel brauchen Aufmerksamkeit.`}</Text></View>
             {selectedItem && <View style={styles.consumeCard}><Text style={styles.cardTitle}>{selectedItem.name} hinzufügen</Text><Text style={styles.muted}>{formatCurrency(selectedItem.effectivePriceCents)} pro Stück</Text><View style={styles.consumeRow}><TextInput style={styles.input} keyboardType="number-pad" value={quantity} onChangeText={setQuantity} /><Pressable style={styles.primary} onPress={() => void recordDrink()}><Text style={styles.primaryText}>Eintragen</Text></Pressable><Pressable onPress={() => setSelectedItem(null)}><Text style={styles.cancel}>Abbrechen</Text></Pressable></View></View>}
-            {role !== "USER" && <View style={styles.managerNote}><Text style={styles.cardTitle}>Betriebsansicht</Text><Text style={styles.muted}>Für Zählungen, Einkaufslisten, Rechnungen und Zeitraumberichte nutze die Web-Verwaltung.</Text></View>}
+            {!canRecordConsumption && <View style={styles.managerNote}><Text style={styles.cardTitle}>Betriebsansicht</Text><Text style={styles.muted}>Für Zählungen, Einkaufslisten, Rechnungen und Zeitraumberichte nutze die Web-Verwaltung.</Text></View>}
             <Text style={styles.sectionTitle}>Verfügbares Inventar</Text>
           </>}
-          renderItem={({ item }) => <Pressable style={styles.item} onPress={() => role === "USER" ? setSelectedItem(item) : undefined}><View><Text style={styles.itemName}>{item.name}</Text><Text style={styles.muted}>{item.category} · {formatCurrency(item.effectivePriceCents)}</Text></View><View style={styles.stock}><Text style={[styles.stockValue, item.onHand <= item.reorderLevel && styles.low]}>{item.onHand}</Text><Text style={styles.muted}>{item.unit}</Text></View></Pressable>}
+          renderItem={({ item }) => <Pressable style={styles.item} onPress={() => canRecordConsumption ? setSelectedItem(item) : undefined}><View><Text style={styles.itemName}>{item.name}</Text><Text style={styles.muted}>{item.category} · {formatCurrency(item.effectivePriceCents)}</Text></View><View style={styles.stock}><Text style={[styles.stockValue, item.onHand <= item.reorderLevel && styles.low]}>{item.onHand}</Text><Text style={styles.muted}>{item.unit}</Text></View></Pressable>}
           ListEmptyComponent={<Text style={styles.muted}>Kein Inventar verfügbar. Starte die Web-API und fülle die Beispieldaten ein.</Text>}
         />
       )}

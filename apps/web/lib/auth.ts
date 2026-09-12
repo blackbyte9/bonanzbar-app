@@ -1,5 +1,5 @@
 import type { PriceMode, Role } from "@bonanzbar/shared";
-import { hasPermission, type Permission } from "@bonanzbar/shared";
+import { hasPermission, normalizeRoles, type Permission } from "@bonanzbar/shared";
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { readSessionToken, sessionCookieName } from "@/lib/session";
@@ -14,7 +14,7 @@ export type AuthenticatedUser = {
   id: string;
   name: string;
   email: string;
-  role: Role;
+  roles: Role[];
   priceMode: PriceMode;
 };
 
@@ -37,6 +37,22 @@ function unsafeCookieRequestHasTrustedOrigin(request: Request): boolean {
   return origin === new URL(request.url).origin;
 }
 
+function authenticatedUser(user: {
+  id: string;
+  name: string;
+  email: string;
+  roles: Role[];
+  priceMode: PriceMode;
+}): AuthenticatedUser {
+  return {
+    id: user.id,
+    name: user.name,
+    email: user.email,
+    roles: normalizeRoles(user.roles),
+    priceMode: user.priceMode,
+  };
+}
+
 export async function authenticate(request: Request): Promise<AuthenticatedUser | Response> {
   const authorization = request.headers.get("authorization");
   const bearerToken = authorization?.startsWith("Bearer ") ? authorization.slice(7) : undefined;
@@ -48,7 +64,7 @@ export async function authenticate(request: Request): Promise<AuthenticatedUser 
     }
     const user = await prisma.user.findUnique({ where: { id: session.userId } });
     if (!user || !user.active) return unauthorized("Dieses Konto ist nicht verfügbar.");
-    return { id: user.id, name: user.name, email: user.email, role: user.role, priceMode: user.priceMode };
+    return authenticatedUser(user);
   }
 
   const demoToken = request.headers.get("x-bonanzbar-token");
@@ -58,7 +74,7 @@ export async function authenticate(request: Request): Promise<AuthenticatedUser 
   const user = await prisma.user.findUnique({ where: { email } });
   if (!user || !user.active) return unauthorized("Dieses Konto ist nicht verfügbar.");
 
-  return { id: user.id, name: user.name, email: user.email, role: user.role, priceMode: user.priceMode };
+  return authenticatedUser(user);
 }
 
 export async function requirePermission(
@@ -67,7 +83,7 @@ export async function requirePermission(
 ): Promise<AuthenticatedUser | Response> {
   const user = await authenticate(request);
   if (user instanceof Response) return user;
-  if (!hasPermission(user.role, permission)) {
+  if (!hasPermission(user.roles, permission)) {
     return NextResponse.json({ error: "Deine Rolle ist für diese Aktion nicht berechtigt." }, { status: 403 });
   }
   return user;

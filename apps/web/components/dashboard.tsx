@@ -1,11 +1,11 @@
 "use client";
 
-import { formatCurrency, priceModeLabels, priceModes, roleLabels, type PriceMode, type Role } from "@bonanzbar/shared";
+import { formatCurrency, priceModeLabels, priceModes, roleLabels, roles as availableRoles, type PriceMode, type Role } from "@bonanzbar/shared";
 import { FormEvent, useEffect, useMemo, useState } from "react";
 
 type Item = { id: string; name: string; category: string; unit: string; priceCents: number; helperPriceCents: number; effectivePriceCents: number; reorderLevel: number; onHand: number };
 type Count = { id: string; label: string; countedAt: string; lines: { itemId: string; quantity: number }[] };
-type User = { id: string; name: string; email: string; role?: Role; priceMode?: PriceMode; active?: boolean };
+type User = { id: string; name: string; email: string; roles?: Role[]; priceMode?: PriceMode; active?: boolean };
 type ShoppingList = { id: string; title: string; status: string; items: { id: string; itemId: string | null; name: string; quantity: number; purchased: boolean }[] };
 type PendingInventoryItem = {
   id: string;
@@ -21,10 +21,11 @@ type PendingInventoryItem = {
 type Bill = { id: string; totalCents: number; status: string; issuedAt: string; recipient: { name: string }; lines: { id: string; description: string; quantity: number; unitCents: number }[] };
 type Consumption = { id: string; quantity: number; unitCents: number; occurredAt: string; item: { name: string } };
 type Bootstrap = {
-  user: { id: string; name: string; email: string; role: Role };
+  user: { id: string; name: string; email: string; roles: Role[] };
   inventory: Item[];
   latestCount: { id: string; label: string; countedAt: string } | null;
   users?: User[];
+  billRecipients?: User[];
   pendingInventoryItems?: PendingInventoryItem[];
   counts?: Count[];
   shoppingLists?: ShoppingList[];
@@ -201,45 +202,46 @@ export function Dashboard() {
     );
   }
 
-  const role = data.user.role;
-  const isAdmin = role === "ADMIN";
-  const isManager = role === "MANAGER";
-  const isMember = role === "USER";
-  const navigation = isAdmin
-    ? [["overview", "Übersicht"], ["inventory", "Inventar"], ["users", "Mitglieder"], ["pricing", "Preise"]]
-    : isManager
-      ? [["overview", "Übersicht"], ["count", "Neue Zählung"], ["shopping", "Einkauf"], ["bills", "Rechnungen"], ["reports", "Verkaufsbericht"]]
-      : [["overview", "Verfügbare Getränke"], ["consume", "Getränk eintragen"]];
+  const isAdmin = data.user.roles.includes("ADMIN");
+  const isManager = data.user.roles.includes("MANAGER");
+  const isMember = data.user.roles.includes("USER");
+  const isMemberOnly = isMember && !isManager && !isAdmin;
+  const navigation = [
+    ["overview", isMemberOnly ? "Verfügbare Getränke" : "Übersicht"],
+    ...(isAdmin ? [["inventory", "Inventar"], ["users", "Mitglieder"], ["pricing", "Preise"]] : []),
+    ...(isManager ? [["count", "Neue Zählung"], ["shopping", "Einkauf"], ["bills", "Rechnungen"], ["reports", "Verkaufsbericht"]] : []),
+    ...(isMember ? [["consume", "Getränk eintragen"]] : []),
+  ];
 
   return (
     <main className="app-shell">
       <header className="topbar">
         <div className="brand-lockup"><img className="brand-logo" src="/bonanzbar-logo.png" alt="Bonanzbar" /></div>
-        <div className="identity"><span>{data.user.name}</span><b>{roleLabels[role]}</b><button className="text-button" onClick={() => void signOut()}>Abmelden</button></div>
+        <div className="identity"><span>{data.user.name}</span><b>{data.user.roles.map((assignedRole) => roleLabels[assignedRole]).join(" · ")}</b><button className="text-button" onClick={() => void signOut()}>Abmelden</button></div>
       </header>
       <nav>{navigation.map(([value, label]) => <button key={value} className={tab === value ? "active" : ""} onClick={() => setTab(value)}>{label}</button>)}</nav>
       {message && <p className="notice app-notice">{message}</p>}
 
       {tab === "overview" && <section className="content">
-        <div className="section-heading"><div><p className="eyebrow">HEUTE IM ÜBERBLICK</p><h1>{isMember ? "Was ist noch da?" : "Die Bar im Fluss halten"}</h1></div><button className="primary" onClick={() => void refresh()} disabled={loading}>{loading ? "Lädt..." : "Aktualisieren"}</button></div>
+        <div className="section-heading"><div><p className="eyebrow">HEUTE IM ÜBERBLICK</p><h1>{isMemberOnly ? "Was ist noch da?" : "Die Bar im Fluss halten"}</h1></div><button className="primary" onClick={() => void refresh()} disabled={loading}>{loading ? "Lädt..." : "Aktualisieren"}</button></div>
         <div className="metrics">
           <Metric label="Aktive Artikel" value={String(data.inventory.length)} />
           <Metric label="Nachbestellen" value={String(lowStock.length)} accent={lowStock.length > 0} />
           <Metric label="Letzte Zählung" value={data.latestCount ? date(data.latestCount.countedAt) : "Noch nicht gezählt"} />
         </div>
-        {!isMember && lowStock.length > 0 && <section className="panel alert"><h2>Nachbestellung im Blick</h2>{lowStock.map((item) => <p key={item.id}>{item.name}: noch <b>{item.onHand} {item.unit}</b>; nachbestellen ab {item.reorderLevel}.</p>)}</section>}
+        {!isMemberOnly && lowStock.length > 0 && <section className="panel alert"><h2>Nachbestellung im Blick</h2>{lowStock.map((item) => <p key={item.id}>{item.name}: noch <b>{item.onHand} {item.unit}</b>; nachbestellen ab {item.reorderLevel}.</p>)}</section>}
         <section className="panel"><h2>Inventarübersicht</h2><InventoryTable items={data.inventory} /></section>
         {isManager && <ManagerOverview data={data} />}
         {isMember && <RecentConsumptions consumptions={data.recentConsumptions ?? []} />}
       </section>}
 
       {isAdmin && tab === "inventory" && <section className="content"><section className="two-column"><section className="panel"><h1>Inventarartikel hinzufügen</h1><form onSubmit={(event) => void submit(event, "/api/inventory", (form) => ({ name: value(form, "name"), category: value(form, "category"), unit: value(form, "unit"), reorderLevel: Number(value(form, "reorderLevel")), priceCents: Math.round(Number(value(form, "publicPrice")) * 100), helperPriceCents: Math.round(Number(value(form, "helperPrice")) * 100) }))}><Field name="name" label="Name" /><Field name="category" label="Kategorie" /><Field name="unit" label="Einheit" initial="Flasche" /><Field name="reorderLevel" label="Meldebestand" type="number" initial="0" /><Field name="publicPrice" label="Regulärer Preis (EUR)" type="number" step="0.01" initial="0" /><Field name="helperPrice" label="Helferpreis (EUR)" type="number" step="0.01" initial="0" /><button className="primary">Artikel hinzufügen</button></form></section><EditableInventoryCatalog items={data.inventory} request={request} setMessage={setMessage} onUpdated={refresh} /></section><PendingInventoryApprovals items={data.pendingInventoryItems ?? []} request={request} setMessage={setMessage} onApproved={refresh} /></section>}
-      {isAdmin && tab === "users" && <section className="content two-column"><section className="panel"><h1>Mitglied hinzufügen</h1><form onSubmit={(event) => void submit(event, "/api/users", (form) => ({ name: value(form, "name"), email: value(form, "email"), role: value(form, "role"), priceMode: value(form, "priceMode"), password: value(form, "password") }))}><Field name="name" label="Name" /><Field name="email" label="E-Mail" type="email" autoComplete="email" /><Field name="password" label="Startpasswort (mindestens 12 Zeichen)" type="password" autoComplete="new-password" /><label>Rolle<select name="role"><option value="USER">Mitglied</option><option value="MANAGER">Barleitung</option><option value="ADMIN">Administration</option></select></label><PriceModeSelect name="priceMode" /><button className="primary">Konto anlegen</button></form></section><section className="panel"><h2>Mitglieder</h2>{(data.users ?? []).map((user) => <div className="row" key={user.id}><span><b>{user.name}</b><small>{user.email} · {user.priceMode && priceModeLabels[user.priceMode]}</small></span><span><span className="pill">{user.role && roleLabels[user.role]}</span>{user.active && user.id !== data.user.id && <button className="text-button inline-action" onClick={() => void deactivate(`/api/users/${user.id}`, user.name)}>Deaktivieren</button>}</span></div>)}</section></section>}
+      {isAdmin && tab === "users" && <section className="content two-column"><section className="panel"><h1>Mitglied hinzufügen</h1><form onSubmit={(event) => void submit(event, "/api/users", (form) => ({ name: value(form, "name"), email: value(form, "email"), roles: new FormData(form).getAll("roles").map(String), priceMode: value(form, "priceMode"), password: value(form, "password") }))}><Field name="name" label="Name" /><Field name="email" label="E-Mail" type="email" autoComplete="email" /><Field name="password" label="Startpasswort (mindestens 12 Zeichen)" type="password" autoComplete="new-password" /><RoleSelection /><PriceModeSelect name="priceMode" /><button className="primary">Konto anlegen</button></form></section><section className="panel"><h2>Mitglieder</h2>{(data.users ?? []).map((user) => <div className="member-row" key={user.id}><div><b>{user.name}</b><small>{user.email} · {user.priceMode && priceModeLabels[user.priceMode]}</small><span className="pill">{user.roles?.map((assignedRole) => roleLabels[assignedRole]).join(" · ")}</span></div>{user.active && user.id !== data.user.id && <div className="member-actions"><UserRoleEditor user={user} request={request} setMessage={setMessage} onUpdated={refresh} /><button className="text-button inline-action danger-action" onClick={() => void deactivate(`/api/users/${user.id}`, user.name)}>Deaktivieren</button></div>}</div>)}</section></section>}
       {isAdmin && tab === "pricing" && <PricingAdministration settings={data.barSettings ?? { isOfficiallyOpen: false, updatedAt: "" }} users={data.users ?? []} request={request} setMessage={setMessage} onUpdated={refresh} />}
 
       {isManager && tab === "count" && <section className="content"><section className="panel"><h1>Bestandszählung abschließen</h1><p className="muted">Die Zählung wird als unveränderbare Grundlage für Auswertungen gespeichert. Die Mengen entsprechen zunächst der letzten Zählung.</p><form onSubmit={(event) => void submit(event, "/api/counts", (form) => ({ label: value(form, "label"), notes: value(form, "notes"), lines: data.inventory.map((item) => ({ itemId: item.id, quantity: countValues[item.id] ?? 0 })) }))}><Field name="label" label="Name der Zählung" initial={`Zählung ${new Date().toLocaleDateString("de-DE")}`} /><label>Notizen<textarea name="notes" rows={2} /></label><div className="count-grid">{data.inventory.map((item) => <label key={item.id}>{item.name}<input type="number" min="0" value={countValues[item.id] ?? 0} onChange={(event) => setCountValues({ ...countValues, [item.id]: Number(event.target.value) })} /><small>{item.unit}</small></label>)}</div><button className="primary">Zählung abschließen</button></form></section></section>}
       {isManager && tab === "shopping" && <section className="content two-column"><section className="panel"><h1>Einkaufsliste erstellen</h1><form onSubmit={(event) => void submit(event, "/api/shopping-lists", (form) => { const itemId = value(form, "itemId"); const item = data.inventory.find((candidate) => candidate.id === itemId); return { title: value(form, "title"), items: [shoppingSource === "inventory" ? { itemId, name: item?.name ?? "", quantity: Number(value(form, "quantity")) } : { name: value(form, "newItemName"), quantity: Number(value(form, "quantity")) }] }; })}><Field name="title" label="Name der Liste" initial="Neue Nachbestellung" /><fieldset className="shopping-source"><legend>Artikelquelle</legend><label><input type="radio" checked={shoppingSource === "inventory"} onChange={() => setShoppingSource("inventory")} />Aus Inventar auswählen</label><label><input type="radio" checked={shoppingSource === "new"} onChange={() => setShoppingSource("new")} />Neuen Artikel eingeben</label></fieldset>{shoppingSource === "inventory" ? <label>Inventarartikel<select name="itemId">{data.inventory.map((item) => <option value={item.id} key={item.id}>{item.name}</option>)}</select></label> : <><Field name="newItemName" label="Neuer Artikel" /><p className="muted">Der Artikel erscheint erst nach Freigabe durch die Administration in der Inventur.</p></>}<Field name="quantity" label="Menge" type="number" initial="1" /><button className="primary">Liste erstellen</button></form></section><ShoppingLists lists={data.shoppingLists ?? []} request={request} setMessage={setMessage} onUpdated={refresh} /></section>}
-      {isManager && tab === "bills" && <section className="content two-column"><section className="panel"><h1>Rechnung erstellen</h1><form onSubmit={(event) => void submit(event, "/api/bills", (form) => ({ recipientId: value(form, "recipientId"), dueAt: new Date(`${value(form, "dueDate")}T12:00:00.000Z`).toISOString(), lines: [{ itemId: value(form, "itemId"), quantity: Number(value(form, "quantity")) }] }))}><label>Mitglied<select name="recipientId">{(data.users ?? []).map((user) => <option key={user.id} value={user.id}>{user.name}</option>)}</select></label><label>Artikel<select name="itemId">{data.inventory.map((item) => <option value={item.id} key={item.id}>{item.name} — regulär {formatCurrency(item.priceCents)}, Helfer {formatCurrency(item.helperPriceCents)}</option>)}</select></label><p className="muted">Der Rechnungspreis wird beim Erstellen anhand der Preisregel des Mitglieds und des aktuellen Betriebsmodus festgelegt.</p><Field name="quantity" label="Menge" type="number" initial="1" /><Field name="dueDate" label="Fällig am" type="date" initial={new Date(Date.now() + 12096e5).toISOString().slice(0, 10)} /><button className="primary">Rechnung ausstellen</button></form></section><section className="panel"><h2>Letzte Rechnungen</h2>{(data.bills ?? []).map((bill) => <div className="row" key={bill.id}><span><b>{bill.recipient.name}</b><small>{bill.lines.map((line) => `${line.quantity}× ${line.description}`).join(", ")}</small></span><b>{formatCurrency(bill.totalCents)}</b></div>)}</section></section>}
+      {isManager && tab === "bills" && <section className="content two-column"><section className="panel"><h1>Rechnung erstellen</h1><form onSubmit={(event) => void submit(event, "/api/bills", (form) => ({ recipientId: value(form, "recipientId"), dueAt: new Date(`${value(form, "dueDate")}T12:00:00.000Z`).toISOString(), lines: [{ itemId: value(form, "itemId"), quantity: Number(value(form, "quantity")) }] }))}><label>Mitglied<select name="recipientId">{(data.billRecipients ?? []).map((user) => <option key={user.id} value={user.id}>{user.name}</option>)}</select></label><label>Artikel<select name="itemId">{data.inventory.map((item) => <option value={item.id} key={item.id}>{item.name} — regulär {formatCurrency(item.priceCents)}, Helfer {formatCurrency(item.helperPriceCents)}</option>)}</select></label><p className="muted">Der Rechnungspreis wird beim Erstellen anhand der Preisregel des Mitglieds und des aktuellen Betriebsmodus festgelegt.</p><Field name="quantity" label="Menge" type="number" initial="1" /><Field name="dueDate" label="Fällig am" type="date" initial={new Date(Date.now() + 12096e5).toISOString().slice(0, 10)} /><button className="primary">Rechnung ausstellen</button></form></section><section className="panel"><h2>Letzte Rechnungen</h2>{(data.bills ?? []).map((bill) => <div className="row" key={bill.id}><span><b>{bill.recipient.name}</b><small>{bill.lines.map((line) => `${line.quantity}× ${line.description}`).join(", ")}</small></span><b>{formatCurrency(bill.totalCents)}</b></div>)}</section></section>}
       {isManager && tab === "reports" && <SalesReport counts={data.counts ?? []} request={request} setMessage={setMessage} />}
       {isMember && tab === "consume" && <section className="content"><section className="panel"><h1>Getränk eintragen</h1><p className="muted">Der Eintrag wird deinem Konto zugeordnet und kann in die nächste Rechnung übernommen werden.</p><form onSubmit={(event) => void submit(event, "/api/consumptions", (form) => ({ itemId: value(form, "itemId"), quantity: Number(value(form, "quantity")) }))}><label>Was hattest du?<select name="itemId">{data.inventory.map((item) => <option value={item.id} key={item.id}>{item.name} — {formatCurrency(item.effectivePriceCents)}</option>)}</select></label><Field name="quantity" label="Menge" type="number" initial="1" /><button className="primary">Zu meinem Konto hinzufügen</button></form></section></section>}
     </main>
@@ -248,6 +250,21 @@ export function Dashboard() {
 
 function value(form: HTMLFormElement, name: string) { return String(new FormData(form).get(name) ?? ""); }
 function Field({ name, label, type = "text", initial, step, autoComplete }: { name: string; label: string; type?: string; initial?: string; step?: string; autoComplete?: string }) { return <label>{label}<input name={name} type={type} defaultValue={initial} step={step} autoComplete={autoComplete} required /></label>; }
+function RoleSelection() { return <fieldset className="role-selection"><legend>Rollen</legend><p className="muted">Rollen sind additiv. Administration erhält automatisch auch Barleitung und Mitglied.</p>{availableRoles.map((role) => <label key={role}><input name="roles" type="checkbox" value={role} defaultChecked={role === "USER"} />{roleLabels[role]}</label>)}</fieldset>; }
+function UserRoleEditor({ user, request, setMessage, onUpdated }: { user: User; request: (path: string, init?: RequestInit) => Promise<unknown>; setMessage: (value: string) => void; onUpdated: () => Promise<void> }) {
+  const saveRoles = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    try {
+      const roles = new FormData(event.currentTarget).getAll("roles").map(String);
+      await request(`/api/users/${user.id}`, { method: "PATCH", body: JSON.stringify({ roles }) });
+      setMessage(`Rollen für ${user.name} gespeichert.`);
+      await onUpdated();
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Rollen konnten nicht gespeichert werden.");
+    }
+  };
+  return <form className="user-role-editor" onSubmit={(event) => void saveRoles(event)}><fieldset className="role-selection"><legend>Rollen bearbeiten</legend>{availableRoles.map((role) => <label key={role}><input name="roles" type="checkbox" value={role} defaultChecked={user.roles?.includes(role)} />{roleLabels[role]}</label>)}</fieldset><button className="secondary" type="submit">Rollen speichern</button></form>;
+}
 function PriceModeSelect({ name, initial = "DYNAMIC" }: { name: string; initial?: PriceMode }) { return <label>Preisregel<select name={name} defaultValue={initial}>{priceModes.map((mode) => <option value={mode} key={mode}>{priceModeLabels[mode]}</option>)}</select></label>; }
 function Metric({ label, value, accent }: { label: string; value: string; accent?: boolean }) { return <div className={`metric ${accent ? "metric-alert" : ""}`}><small>{label}</small><strong>{value}</strong></div>; }
 function InventoryTable({ items, onDeactivate }: { items: Item[]; onDeactivate?: (item: Item) => void }) { return <div className="table">{items.map((item) => <div className="table-row" key={item.id}><span><b>{item.name}</b><small>{item.category} · {formatCurrency(item.effectivePriceCents)}</small></span><span className={item.onHand <= item.reorderLevel ? "low" : ""}>{item.onHand} <small>{item.unit}</small>{onDeactivate && <button className="text-button inline-action" onClick={() => onDeactivate(item)}>Ausmustern</button>}</span></div>)}</div>; }

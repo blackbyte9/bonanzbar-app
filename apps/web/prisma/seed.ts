@@ -18,9 +18,9 @@ async function main() {
 
   const passwordHash = await hashPassword("bonanzbar-demo");
   const [admin, manager, member] = await Promise.all([
-    prisma.user.create({ data: { name: "Ada Administration", email: "ada@bonanzbar.local", role: Role.ADMIN, priceMode: PriceMode.PUBLIC, passwordHash } }),
-    prisma.user.create({ data: { name: "Max Barleitung", email: "max@bonanzbar.local", role: Role.MANAGER, priceMode: PriceMode.HELPER, passwordHash } }),
-    prisma.user.create({ data: { name: "Mia Mitglied", email: "mia@bonanzbar.local", role: Role.USER, priceMode: PriceMode.DYNAMIC, passwordHash } }),
+    prisma.user.create({ data: { name: "Ada Administration", email: "ada@bonanzbar.local", roles: [Role.ADMIN, Role.MANAGER, Role.USER], priceMode: PriceMode.PUBLIC, passwordHash } }),
+    prisma.user.create({ data: { name: "Max Barleitung", email: "max@bonanzbar.local", roles: [Role.MANAGER], priceMode: PriceMode.HELPER, passwordHash } }),
+    prisma.user.create({ data: { name: "Mia Mitglied", email: "mia@bonanzbar.local", roles: [Role.USER], priceMode: PriceMode.DYNAMIC, passwordHash } }),
   ]);
   await prisma.barSettings.create({ data: { id: "default", isOfficiallyOpen: false, updatedBy: admin.id } });
 

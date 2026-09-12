@@ -51,6 +51,15 @@ fieldset { display:grid; gap:.5rem; margin:0; padding:.8rem; border:1px solid va
 legend { padding:0 .3rem; color:var(--muted); font-size:.7rem; font-weight:bold; letter-spacing:.1em; text-transform:uppercase; }
 .shopping-source label { display:flex; align-items:center; gap:.5rem; cursor:pointer; }
 .shopping-source input { accent-color:var(--accent); width:1rem; height:1rem; padding:0; }
+.role-selection p { margin:0 0 .25rem; }
+.role-selection label { display:flex; align-items:center; gap:.5rem; cursor:pointer; }
+.role-selection input { accent-color:var(--accent); width:1rem; height:1rem; padding:0; }
+.member-row { display:flex; align-items:flex-start; justify-content:space-between; gap:1rem; padding:.8rem 0; border-top:1px solid var(--line); }
+.member-row:first-child { border-top:0; }
+.member-row small { display:block; margin:.2rem 0 .5rem; color:var(--muted); }
+.member-actions { display:grid; justify-items:end; gap:.5rem; }
+.user-role-editor { min-width:220px; }
+.user-role-editor .role-selection { text-align:left; }
 input, select, textarea { border:1px solid #655846; border-radius:3px; padding:.68rem .7rem; background:#120f0d; color:var(--ink); }
 input:focus, select:focus, textarea:focus { outline:2px solid #b8893f; outline-offset:1px; border-color:#b8893f; }
 textarea { resize:vertical; }
