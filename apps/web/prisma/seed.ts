@@ -1,4 +1,5 @@
 import { PriceMode, PrismaClient, Role } from "../generated/prisma";
+import { hashPassword } from "../lib/password";
 
 const prisma = new PrismaClient();
 
@@ -12,12 +13,14 @@ async function main() {
   await prisma.stockCount.deleteMany();
   await prisma.inventoryItem.deleteMany();
   await prisma.barSettings.deleteMany();
+  await prisma.applicationSetup.deleteMany();
   await prisma.user.deleteMany();
 
+  const passwordHash = await hashPassword("bonanzbar-demo");
   const [admin, manager, member] = await Promise.all([
-    prisma.user.create({ data: { name: "Ada Administration", email: "ada@bonanzbar.local", role: Role.ADMIN, priceMode: PriceMode.PUBLIC } }),
-    prisma.user.create({ data: { name: "Max Barleitung", email: "max@bonanzbar.local", role: Role.MANAGER, priceMode: PriceMode.HELPER } }),
-    prisma.user.create({ data: { name: "Mia Mitglied", email: "mia@bonanzbar.local", role: Role.USER, priceMode: PriceMode.DYNAMIC } }),
+    prisma.user.create({ data: { name: "Ada Administration", email: "ada@bonanzbar.local", role: Role.ADMIN, priceMode: PriceMode.PUBLIC, passwordHash } }),
+    prisma.user.create({ data: { name: "Max Barleitung", email: "max@bonanzbar.local", role: Role.MANAGER, priceMode: PriceMode.HELPER, passwordHash } }),
+    prisma.user.create({ data: { name: "Mia Mitglied", email: "mia@bonanzbar.local", role: Role.USER, priceMode: PriceMode.DYNAMIC, passwordHash } }),
   ]);
   await prisma.barSettings.create({ data: { id: "default", isOfficiallyOpen: false, updatedBy: admin.id } });
 

@@ -26,16 +26,24 @@ const demoTokens: Record<Role, string> = {
 
 export default function App() {
   const [role, setRole] = useState<Role>("USER");
+  const [accessToken, setAccessToken] = useState<string | null>(null);
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
   const [data, setData] = useState<Snapshot | null>(null);
   const [loading, setLoading] = useState(false);
   const [selectedItem, setSelectedItem] = useState<Item | null>(null);
   const [quantity, setQuantity] = useState("1");
 
-  const token = demoTokens[role];
+  const demoMode = __DEV__;
+  const token = accessToken ?? (demoMode ? demoTokens[role] : null);
   const api = async (path: string, init?: RequestInit) => {
     const response = await fetch(`${API_URL}${path}`, {
       ...init,
-      headers: { "Content-Type": "application/json", "x-bonanzbar-token": token, ...(init?.headers ?? {}) },
+      headers: {
+        "Content-Type": "application/json",
+        ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : token ? { "x-bonanzbar-token": token } : {}),
+        ...(init?.headers ?? {}),
+      },
     });
     const body = await response.json();
     if (!response.ok) throw new Error(body.error ?? "Anfrage fehlgeschlagen");
@@ -51,7 +59,29 @@ export default function App() {
       setLoading(false);
     }
   };
-  useEffect(() => { void load(); }, [role]);
+  useEffect(() => {
+    if (token) void load();
+  }, [role, token]);
+
+  const signIn = async () => {
+    setLoading(true);
+    try {
+      const response = await fetch(`${API_URL}/api/auth/login`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, password, mobile: true }),
+      });
+      const body = await response.json();
+      if (!response.ok || !body.accessToken) throw new Error(body.error ?? "Anmeldung fehlgeschlagen.");
+      setAccessToken(body.accessToken);
+      setRole(body.user.role);
+      setPassword("");
+    } catch (error) {
+      Alert.alert("Anmeldung fehlgeschlagen", error instanceof Error ? error.message : "Bitte versuche es erneut.");
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const lowStock = useMemo(() => data?.inventory.filter((item) => item.onHand <= item.reorderLevel).length ?? 0, [data]);
   const recordDrink = async () => {
@@ -66,6 +96,20 @@ export default function App() {
     }
   };
 
+  if (!demoMode && !accessToken) {
+    return <SafeAreaView style={styles.page}>
+      <StatusBar style="light" />
+      <View style={styles.login}>
+        <Image source={require("./assets/bonanzbar-logo.png")} style={styles.loginLogo} resizeMode="contain" />
+        <Text style={styles.loginTitle}>Willkommen zurück</Text>
+        <Text style={styles.muted}>Melde dich mit deinem Bonanzbar-Konto an.</Text>
+        <TextInput style={styles.loginInput} value={email} onChangeText={setEmail} keyboardType="email-address" autoCapitalize="none" autoComplete="email" placeholder="E-Mail-Adresse" placeholderTextColor="#8d8375" />
+        <TextInput style={styles.loginInput} value={password} onChangeText={setPassword} secureTextEntry autoComplete="current-password" placeholder="Passwort" placeholderTextColor="#8d8375" />
+        <Pressable style={styles.primary} onPress={() => void signIn()} disabled={loading}><Text style={styles.primaryText}>{loading ? "Anmelden..." : "Anmelden"}</Text></Pressable>
+      </View>
+    </SafeAreaView>;
+  }
+
   return (
     <SafeAreaView style={styles.page}>
       <StatusBar style="light" />
@@ -73,9 +117,9 @@ export default function App() {
         <View style={styles.brand}><Image source={require("./assets/bonanzbar-logo.png")} style={styles.logo} resizeMode="contain" /><View><Text style={styles.kicker}>BONANZBAR</Text><Text style={styles.title}>Die Bar in deiner Hand.</Text></View></View>
         <Pressable onPress={() => void load()} style={styles.refresh}><Text style={styles.refreshText}>{loading ? "..." : "Aktualisieren"}</Text></Pressable>
       </View>
-      <View style={styles.roles}>
+      {demoMode && <View style={styles.roles}>
         {(["USER", "MANAGER", "ADMIN"] as Role[]).map((candidate) => <Pressable key={candidate} onPress={() => setRole(candidate)} style={[styles.role, candidate === role && styles.roleSelected]}><Text style={[styles.roleText, candidate === role && styles.roleTextSelected]}>{roleLabels[candidate]}</Text></Pressable>)}
-      </View>
+      </View>}
       {loading && !data ? <View style={styles.loader}><ActivityIndicator color="#275c46" /></View> : (
         <FlatList
           data={data?.inventory ?? []}
@@ -97,6 +141,10 @@ export default function App() {
 
 const styles = StyleSheet.create({
   page: { flex: 1, backgroundColor: "#12100e" },
+  login: { flex: 1, justifyContent: "center", padding: 28, gap: 14 },
+  loginLogo: { width: "100%", height: 120, marginBottom: 18 },
+  loginTitle: { color: "#f4ca6b", fontSize: 27, fontWeight: "700" },
+  loginInput: { color: "#f7f1e4", backgroundColor: "#1c1916", borderWidth: 1, borderColor: "#655846", borderRadius: 3, paddingHorizontal: 13, paddingVertical: 12 },
   header: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingHorizontal: 20, paddingTop: 20, paddingBottom: 16, backgroundColor: "#8d3216", borderBottomWidth: 2, borderBottomColor: "#c8a456" },
   brand: { flexDirection: "row", alignItems: "center", flex: 1, marginRight: 10 },
   logo: { width: 50, height: 42, marginRight: 10 },

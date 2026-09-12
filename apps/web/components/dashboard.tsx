@@ -37,25 +37,29 @@ const demoRoles: Role[] = ["ADMIN", "MANAGER", "USER"];
 const date = (value: string) => new Intl.DateTimeFormat("de-DE", { dateStyle: "medium" }).format(new Date(value));
 
 export function Dashboard() {
-  const [token, setToken] = useState<string | null>(null);
+  const [demoToken, setDemoToken] = useState<string | null>(null);
+  const [sessionActive, setSessionActive] = useState(false);
   const [data, setData] = useState<Bootstrap | null>(null);
   const [message, setMessage] = useState("");
   const [loading, setLoading] = useState(false);
   const [tab, setTab] = useState("overview");
   const [countValues, setCountValues] = useState<Record<string, number>>({});
   const [shoppingSource, setShoppingSource] = useState<"inventory" | "new">("inventory");
+  const [showSetup, setShowSetup] = useState(false);
+  const demoEnabled = process.env.NODE_ENV !== "production";
 
   const request = async (path: string, init?: RequestInit) => {
     const response = await fetch(path, {
       ...init,
-      headers: { "Content-Type": "application/json", "x-bonanzbar-token": token ?? "", ...(init?.headers ?? {}) },
+      credentials: "same-origin",
+      headers: { "Content-Type": "application/json", ...(demoToken ? { "x-bonanzbar-token": demoToken } : {}), ...(init?.headers ?? {}) },
     });
     const body = await response.json();
     if (!response.ok) throw new Error(body.error ?? "Anfrage fehlgeschlagen.");
     return body;
   };
   const refresh = async () => {
-    if (!token) return;
+    if (!sessionActive) return;
     setLoading(true);
     try {
       const result = await request("/api/bootstrap");
@@ -67,21 +71,94 @@ export function Dashboard() {
       setLoading(false);
     }
   };
-  useEffect(() => { if (token) void refresh(); }, [token]);
+  useEffect(() => {
+    if (sessionActive) void refresh();
+  }, [sessionActive, demoToken]);
+  useEffect(() => {
+    const restoreSession = async () => {
+      try {
+        const result = await request("/api/bootstrap");
+        setData(result);
+        setCountValues(Object.fromEntries(result.inventory.map((item: Item) => [item.id, item.onHand])));
+        setSessionActive(true);
+      } catch {
+        // A missing or expired cookie is expected before a user signs in.
+      }
+    };
+    void restoreSession();
+  }, []);
 
-  const signIn = async (role: Role) => {
+  const signInDemo = async (role: Role) => {
     setLoading(true);
     try {
       const response = await fetch("/api/auth/demo", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ role }) });
       const body = await response.json();
       if (!response.ok) throw new Error(body.error);
-      setToken(body.token);
+      setDemoToken(body.token);
+      setSessionActive(true);
       setMessage(`Als lokale Demo-Rolle „${roleLabels[role]}“ angemeldet.`);
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Anmeldung fehlgeschlagen.");
     } finally {
       setLoading(false);
     }
+  };
+  const signIn = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    setLoading(true);
+    try {
+      const form = new FormData(event.currentTarget);
+      const response = await fetch("/api/auth/login", {
+        method: "POST",
+        credentials: "same-origin",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: form.get("email"), password: form.get("password") }),
+      });
+      const body = await response.json();
+      if (!response.ok) throw new Error(body.error ?? "Anmeldung fehlgeschlagen.");
+      setDemoToken(null);
+      setSessionActive(true);
+      setMessage(`Als „${body.user.name}“ angemeldet.`);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Anmeldung fehlgeschlagen.");
+    } finally {
+      setLoading(false);
+    }
+  };
+  const setUpInitialAdmin = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    setLoading(true);
+    try {
+      const form = new FormData(event.currentTarget);
+      const response = await fetch("/api/auth/setup", {
+        method: "POST",
+        credentials: "same-origin",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          setupToken: form.get("setupToken"),
+          name: form.get("name"),
+          email: form.get("email"),
+          password: form.get("password"),
+        }),
+      });
+      const body = await response.json();
+      if (!response.ok) throw new Error(body.error ?? "Erstzugang konnte nicht eingerichtet werden.");
+      setDemoToken(null);
+      setSessionActive(true);
+      setShowSetup(false);
+      setMessage("Administrationszugang wurde eingerichtet.");
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Erstzugang konnte nicht eingerichtet werden.");
+    } finally {
+      setLoading(false);
+    }
+  };
+  const signOut = async () => {
+    await fetch("/api/auth/logout", { method: "POST", credentials: "same-origin" });
+    setDemoToken(null);
+    setData(null);
+    setSessionActive(false);
+    setMessage("");
   };
   const submit = async (event: FormEvent<HTMLFormElement>, path: string, payload: (form: HTMLFormElement) => unknown) => {
     event.preventDefault();
@@ -105,7 +182,7 @@ export function Dashboard() {
   };
 
   const lowStock = useMemo(() => data?.inventory.filter((item) => item.onHand <= item.reorderLevel) ?? [], [data]);
-  if (!token || !data) {
+  if (!sessionActive || !data) {
     return (
       <main className="auth-shell">
         <section className="hero">
@@ -115,12 +192,9 @@ export function Dashboard() {
           <p>Ein Ort für Bestand, Mitgliedskonten und den nächsten Einkauf.</p>
         </section>
         <section className="login-card">
-          <span className="pill">Lokale Entwicklung</span>
-          <h2>Zur Bar</h2>
-          <p>Wähle eine vorbereitete Rolle, um ihre Berechtigungen auszuprobieren.</p>
-          <div className="role-grid">
-            {demoRoles.map((role) => <button key={role} disabled={loading} onClick={() => void signIn(role)}>{roleLabels[role]}<small>{role === "ADMIN" ? "Inventar & Mitglieder" : role === "MANAGER" ? "Betrieb & Auswertungen" : "Meine Getränke"}</small></button>)}
-          </div>
+          {demoEnabled ? <><span className="pill">Lokale Entwicklung</span><h2>Zur Bar</h2><p>Wähle eine vorbereitete Rolle, um ihre Berechtigungen auszuprobieren.</p><div className="role-grid">
+            {demoRoles.map((role) => <button key={role} disabled={loading} onClick={() => void signInDemo(role)}>{roleLabels[role]}<small>{role === "ADMIN" ? "Inventar & Mitglieder" : role === "MANAGER" ? "Betrieb & Auswertungen" : "Meine Getränke"}</small></button>)}
+          </div></> : showSetup ? <><span className="pill">Ersteinrichtung</span><h2>Administration einrichten</h2><p>Verwende den einmaligen Einrichtungsschlüssel aus der sicheren Vercel-Variable.</p><form onSubmit={(event) => void setUpInitialAdmin(event)}><Field name="setupToken" label="Einrichtungsschlüssel" type="password" autoComplete="off" /><Field name="name" label="Name" autoComplete="name" /><Field name="email" label="E-Mail-Adresse" type="email" autoComplete="email" /><Field name="password" label="Passwort (mindestens 12 Zeichen)" type="password" autoComplete="new-password" /><button className="primary" disabled={loading}>Administrationszugang erstellen</button><button className="text-button" type="button" onClick={() => setShowSetup(false)}>Zur Anmeldung</button></form></> : <><span className="pill">Sicherer Zugang</span><h2>Anmelden</h2><p>Melde dich mit deiner E-Mail-Adresse und deinem Passwort an.</p><form onSubmit={(event) => void signIn(event)}><Field name="email" label="E-Mail-Adresse" type="email" autoComplete="email" /><Field name="password" label="Passwort" type="password" autoComplete="current-password" /><button className="primary" disabled={loading}>Anmelden</button><button className="text-button" type="button" onClick={() => setShowSetup(true)}>Erstzugang einrichten</button></form></>}
           {message && <p className="notice">{message}</p>}
         </section>
       </main>
@@ -141,7 +215,7 @@ export function Dashboard() {
     <main className="app-shell">
       <header className="topbar">
         <div className="brand-lockup"><img className="brand-logo" src="/bonanzbar-logo.png" alt="Bonanzbar" /></div>
-        <div className="identity"><span>{data.user.name}</span><b>{roleLabels[role]}</b><button className="text-button" onClick={() => { setToken(null); setData(null); }}>Demo wechseln</button></div>
+        <div className="identity"><span>{data.user.name}</span><b>{roleLabels[role]}</b><button className="text-button" onClick={() => void signOut()}>Abmelden</button></div>
       </header>
       <nav>{navigation.map(([value, label]) => <button key={value} className={tab === value ? "active" : ""} onClick={() => setTab(value)}>{label}</button>)}</nav>
       {message && <p className="notice app-notice">{message}</p>}
@@ -160,7 +234,7 @@ export function Dashboard() {
       </section>}
 
       {isAdmin && tab === "inventory" && <section className="content"><section className="two-column"><section className="panel"><h1>Inventarartikel hinzufügen</h1><form onSubmit={(event) => void submit(event, "/api/inventory", (form) => ({ name: value(form, "name"), category: value(form, "category"), unit: value(form, "unit"), reorderLevel: Number(value(form, "reorderLevel")), priceCents: Math.round(Number(value(form, "publicPrice")) * 100), helperPriceCents: Math.round(Number(value(form, "helperPrice")) * 100) }))}><Field name="name" label="Name" /><Field name="category" label="Kategorie" /><Field name="unit" label="Einheit" initial="Flasche" /><Field name="reorderLevel" label="Meldebestand" type="number" initial="0" /><Field name="publicPrice" label="Regulärer Preis (EUR)" type="number" step="0.01" initial="0" /><Field name="helperPrice" label="Helferpreis (EUR)" type="number" step="0.01" initial="0" /><button className="primary">Artikel hinzufügen</button></form></section><EditableInventoryCatalog items={data.inventory} request={request} setMessage={setMessage} onUpdated={refresh} /></section><PendingInventoryApprovals items={data.pendingInventoryItems ?? []} request={request} setMessage={setMessage} onApproved={refresh} /></section>}
-      {isAdmin && tab === "users" && <section className="content two-column"><section className="panel"><h1>Mitglied hinzufügen</h1><form onSubmit={(event) => void submit(event, "/api/users", (form) => ({ name: value(form, "name"), email: value(form, "email"), role: value(form, "role"), priceMode: value(form, "priceMode") }))}><Field name="name" label="Name" /><Field name="email" label="E-Mail" type="email" /><label>Rolle<select name="role"><option value="USER">Mitglied</option><option value="MANAGER">Barleitung</option><option value="ADMIN">Administration</option></select></label><PriceModeSelect name="priceMode" /><button className="primary">Konto anlegen</button></form></section><section className="panel"><h2>Mitglieder</h2>{(data.users ?? []).map((user) => <div className="row" key={user.id}><span><b>{user.name}</b><small>{user.email} · {user.priceMode && priceModeLabels[user.priceMode]}</small></span><span><span className="pill">{user.role && roleLabels[user.role]}</span>{user.active && user.id !== data.user.id && <button className="text-button inline-action" onClick={() => void deactivate(`/api/users/${user.id}`, user.name)}>Deaktivieren</button>}</span></div>)}</section></section>}
+      {isAdmin && tab === "users" && <section className="content two-column"><section className="panel"><h1>Mitglied hinzufügen</h1><form onSubmit={(event) => void submit(event, "/api/users", (form) => ({ name: value(form, "name"), email: value(form, "email"), role: value(form, "role"), priceMode: value(form, "priceMode"), password: value(form, "password") }))}><Field name="name" label="Name" /><Field name="email" label="E-Mail" type="email" autoComplete="email" /><Field name="password" label="Startpasswort (mindestens 12 Zeichen)" type="password" autoComplete="new-password" /><label>Rolle<select name="role"><option value="USER">Mitglied</option><option value="MANAGER">Barleitung</option><option value="ADMIN">Administration</option></select></label><PriceModeSelect name="priceMode" /><button className="primary">Konto anlegen</button></form></section><section className="panel"><h2>Mitglieder</h2>{(data.users ?? []).map((user) => <div className="row" key={user.id}><span><b>{user.name}</b><small>{user.email} · {user.priceMode && priceModeLabels[user.priceMode]}</small></span><span><span className="pill">{user.role && roleLabels[user.role]}</span>{user.active && user.id !== data.user.id && <button className="text-button inline-action" onClick={() => void deactivate(`/api/users/${user.id}`, user.name)}>Deaktivieren</button>}</span></div>)}</section></section>}
       {isAdmin && tab === "pricing" && <PricingAdministration settings={data.barSettings ?? { isOfficiallyOpen: false, updatedAt: "" }} users={data.users ?? []} request={request} setMessage={setMessage} onUpdated={refresh} />}
 
       {isManager && tab === "count" && <section className="content"><section className="panel"><h1>Bestandszählung abschließen</h1><p className="muted">Die Zählung wird als unveränderbare Grundlage für Auswertungen gespeichert. Die Mengen entsprechen zunächst der letzten Zählung.</p><form onSubmit={(event) => void submit(event, "/api/counts", (form) => ({ label: value(form, "label"), notes: value(form, "notes"), lines: data.inventory.map((item) => ({ itemId: item.id, quantity: countValues[item.id] ?? 0 })) }))}><Field name="label" label="Name der Zählung" initial={`Zählung ${new Date().toLocaleDateString("de-DE")}`} /><label>Notizen<textarea name="notes" rows={2} /></label><div className="count-grid">{data.inventory.map((item) => <label key={item.id}>{item.name}<input type="number" min="0" value={countValues[item.id] ?? 0} onChange={(event) => setCountValues({ ...countValues, [item.id]: Number(event.target.value) })} /><small>{item.unit}</small></label>)}</div><button className="primary">Zählung abschließen</button></form></section></section>}
@@ -173,7 +247,7 @@ export function Dashboard() {
 }
 
 function value(form: HTMLFormElement, name: string) { return String(new FormData(form).get(name) ?? ""); }
-function Field({ name, label, type = "text", initial, step }: { name: string; label: string; type?: string; initial?: string; step?: string }) { return <label>{label}<input name={name} type={type} defaultValue={initial} step={step} required /></label>; }
+function Field({ name, label, type = "text", initial, step, autoComplete }: { name: string; label: string; type?: string; initial?: string; step?: string; autoComplete?: string }) { return <label>{label}<input name={name} type={type} defaultValue={initial} step={step} autoComplete={autoComplete} required /></label>; }
 function PriceModeSelect({ name, initial = "DYNAMIC" }: { name: string; initial?: PriceMode }) { return <label>Preisregel<select name={name} defaultValue={initial}>{priceModes.map((mode) => <option value={mode} key={mode}>{priceModeLabels[mode]}</option>)}</select></label>; }
 function Metric({ label, value, accent }: { label: string; value: string; accent?: boolean }) { return <div className={`metric ${accent ? "metric-alert" : ""}`}><small>{label}</small><strong>{value}</strong></div>; }
 function InventoryTable({ items, onDeactivate }: { items: Item[]; onDeactivate?: (item: Item) => void }) { return <div className="table">{items.map((item) => <div className="table-row" key={item.id}><span><b>{item.name}</b><small>{item.category} · {formatCurrency(item.effectivePriceCents)}</small></span><span className={item.onHand <= item.reorderLevel ? "low" : ""}>{item.onHand} <small>{item.unit}</small>{onDeactivate && <button className="text-button inline-action" onClick={() => onDeactivate(item)}>Ausmustern</button>}</span></div>)}</div>; }

@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { requirePermission } from "@/lib/auth";
 import { jsonError, requestJson } from "@/lib/http";
+import { hashPassword } from "@/lib/password";
 import { prisma } from "@/lib/prisma";
 
 const updateSchema = z.object({
@@ -10,6 +11,7 @@ const updateSchema = z.object({
   role: z.enum(["ADMIN", "MANAGER", "USER"]).optional(),
   priceMode: z.enum(["PUBLIC", "HELPER", "DYNAMIC"]).optional(),
   active: z.boolean().optional(),
+  password: z.string().min(12).max(128).optional(),
 }).refine((data) => Object.keys(data).length > 0, "Mindestens ein Benutzerfeld muss angegeben werden.");
 
 export async function PATCH(request: Request, context: { params: Promise<{ id: string }> }) {
@@ -23,7 +25,12 @@ export async function PATCH(request: Request, context: { params: Promise<{ id: s
     }
     const existing = await prisma.user.findUnique({ where: { id } });
     if (!existing) return NextResponse.json({ error: "Benutzer nicht gefunden." }, { status: 404 });
-    const user = await prisma.user.update({ where: { id }, data: input });
+    const { password, ...update } = input;
+    const user = await prisma.user.update({
+      where: { id },
+      data: { ...update, ...(password ? { passwordHash: await hashPassword(password) } : {}) },
+      select: { id: true, name: true, email: true, role: true, priceMode: true, active: true },
+    });
     return NextResponse.json(user);
   } catch (error) {
     return jsonError(error);
