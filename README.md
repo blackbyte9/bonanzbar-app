@@ -50,6 +50,8 @@ Die drei Demo-Konten verwenden bei der Passwortanmeldung jeweils `bonanzbar-demo
 
 Konten können mehrere Rollen gleichzeitig haben. In der Mitgliederverwaltung werden die Rollen per Auswahlfeld kombiniert. Ein Konto mit **Administration** erhält serverseitig automatisch zusätzlich **Barleitung** und **Mitglied**. Dadurch kann die Administration neben Inventar, Benutzerkonten und Preisen auch Bestandszählungen, Einkaufslisten, Rechnungen, Verkaufsberichte und den eigenen Konsum nutzen.
 
+Die Bereiche **Administration**, **Barleitung** und **Mitglied** bleiben in der Oberfläche getrennt. Im Header kann ein Konto mit mehreren Rollen zwischen seinen zugewiesenen Bereichen wechseln; Navigation und Übersicht zeigen anschließend nur die Funktionen der gewählten Rolle. Die serverseitige Berechtigungsprüfung bleibt davon unabhängig und prüft weiterhin alle zugewiesenen Rollen.
+
 Starte die mobile App in einem weiteren Terminal:
 
 ```powershell

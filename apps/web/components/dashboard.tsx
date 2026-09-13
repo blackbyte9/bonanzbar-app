@@ -43,6 +43,7 @@ export function Dashboard() {
   const [data, setData] = useState<Bootstrap | null>(null);
   const [message, setMessage] = useState("");
   const [loading, setLoading] = useState(false);
+  const [activeRole, setActiveRole] = useState<Role | null>(null);
   const [tab, setTab] = useState("overview");
   const [countValues, setCountValues] = useState<Record<string, number>>({});
   const [shoppingSource, setShoppingSource] = useState<"inventory" | "new">("inventory");
@@ -111,6 +112,7 @@ export function Dashboard() {
       const body = await response.json();
       if (!response.ok) throw new Error(body.error);
       setDemoToken(body.token);
+      setActiveRole(null);
       setSessionActive(true);
       setMessage(`Als lokale Demo-Rolle „${roleLabels[role]}“ angemeldet.`);
     } catch (error) {
@@ -133,6 +135,7 @@ export function Dashboard() {
       const body = await response.json();
       if (!response.ok) throw new Error(body.error ?? "Anmeldung fehlgeschlagen.");
       setDemoToken(null);
+      setActiveRole(null);
       setSessionActive(true);
       setMessage(`Als „${body.user.name}“ angemeldet.`);
     } catch (error) {
@@ -160,6 +163,7 @@ export function Dashboard() {
       const body = await response.json();
       if (!response.ok) throw new Error(body.error ?? "Erstzugang konnte nicht eingerichtet werden.");
       setDemoToken(null);
+      setActiveRole(null);
       setSessionActive(true);
       setShowSetup(false);
       setMessage("Administrationszugang wurde eingerichtet.");
@@ -173,6 +177,7 @@ export function Dashboard() {
     await fetch("/api/auth/logout", { method: "POST", credentials: "same-origin" });
     setDemoToken(null);
     setData(null);
+    setActiveRole(null);
     setSessionActive(false);
     setMessage("");
   };
@@ -217,34 +222,42 @@ export function Dashboard() {
     );
   }
 
-  const isAdmin = data.user.roles.includes("ADMIN");
-  const isManager = data.user.roles.includes("MANAGER");
-  const isMember = data.user.roles.includes("USER");
-  const isMemberOnly = isMember && !isManager && !isAdmin;
-  const navigation = [
-    ["overview", isMemberOnly ? "Verfügbare Getränke" : "Übersicht"],
-    ...(isAdmin ? [["inventory", "Inventar"], ["users", "Mitglieder"], ["pricing", "Preise"]] : []),
-    ...(isManager ? [["count", "Neue Zählung"], ["shopping", "Einkauf"], ["bills", "Rechnungen"], ["reports", "Verkaufsbericht"]] : []),
-    ...(isMember ? [["consume", "Getränk eintragen"]] : []),
-  ];
+  const visibleRole = activeRole && data.user.roles.includes(activeRole) ? activeRole : data.user.roles[0] ?? "USER";
+  const isAdmin = visibleRole === "ADMIN";
+  const isManager = visibleRole === "MANAGER";
+  const isMember = visibleRole === "USER";
+  const navigation = isAdmin
+    ? [["overview", "Übersicht"], ["inventory", "Inventar"], ["users", "Mitglieder"], ["pricing", "Preise"]]
+    : isManager
+      ? [["overview", "Übersicht"], ["count", "Neue Zählung"], ["shopping", "Einkauf"], ["bills", "Rechnungen"], ["reports", "Verkaufsbericht"]]
+      : [["overview", "Verfügbare Getränke"], ["consume", "Getränk eintragen"]];
+  const switchRole = (role: Role) => {
+    setActiveRole(role);
+    setTab("overview");
+  };
 
   return (
     <main className="app-shell">
       <header className="topbar">
         <div className="brand-lockup"><img className="brand-logo" src="/bonanzbar-logo.png" alt="Bonanzbar" /></div>
-        <div className="identity"><span>{data.user.name}</span><b>{data.user.roles.map((assignedRole) => roleLabels[assignedRole]).join(" · ")}</b><button className="text-button" onClick={() => void signOut()}>Abmelden</button></div>
+        <div className="header-actions">
+          <div className="role-switcher" role="tablist" aria-label="Bereich auswählen">
+            {data.user.roles.map((role) => <button key={role} type="button" role="tab" aria-selected={role === visibleRole} className={role === visibleRole ? "active" : ""} onClick={() => switchRole(role)}>{roleLabels[role]}</button>)}
+          </div>
+          <div className="identity"><span>{data.user.name}</span><button className="text-button" onClick={() => void signOut()}>Abmelden</button></div>
+        </div>
       </header>
       <nav>{navigation.map(([value, label]) => <button key={value} className={tab === value ? "active" : ""} onClick={() => setTab(value)}>{label}</button>)}</nav>
       {message && <p className="notice app-notice">{message}</p>}
 
       {tab === "overview" && <section className="content">
-        <div className="section-heading"><div><p className="eyebrow">HEUTE IM ÜBERBLICK</p><h1>{isMemberOnly ? "Was ist noch da?" : "Die Bar im Fluss halten"}</h1></div><button className="primary" onClick={() => void refresh()} disabled={loading}>{loading ? "Lädt..." : "Aktualisieren"}</button></div>
+        <div className="section-heading"><div><p className="eyebrow">{roleLabels[visibleRole].toUpperCase()} / HEUTE IM ÜBERBLICK</p><h1>{isAdmin ? "Die Bar verwalten" : isManager ? "Den Betrieb koordinieren" : "Was ist noch da?"}</h1></div><button className="primary" onClick={() => void refresh()} disabled={loading}>{loading ? "Lädt..." : "Aktualisieren"}</button></div>
         <div className="metrics">
           <Metric label="Aktive Artikel" value={String(data.inventory.length)} />
           <Metric label="Nachbestellen" value={String(lowStock.length)} accent={lowStock.length > 0} />
           <Metric label="Letzte Zählung" value={data.latestCount ? date(data.latestCount.countedAt) : "Noch nicht gezählt"} />
         </div>
-        {!isMemberOnly && lowStock.length > 0 && <section className="panel alert"><h2>Nachbestellung im Blick</h2>{lowStock.map((item) => <p key={item.id}>{item.name}: noch <b>{item.onHand} {item.unit}</b>; nachbestellen ab {item.reorderLevel}.</p>)}</section>}
+        {!isMember && lowStock.length > 0 && <section className="panel alert"><h2>Nachbestellung im Blick</h2>{lowStock.map((item) => <p key={item.id}>{item.name}: noch <b>{item.onHand} {item.unit}</b>; nachbestellen ab {item.reorderLevel}.</p>)}</section>}
         <section className="panel"><h2>Inventarübersicht</h2><InventoryTable items={data.inventory} /></section>
         {isManager && <ManagerOverview data={data} />}
         {isMember && <RecentConsumptions consumptions={data.recentConsumptions ?? []} />}
