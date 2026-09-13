@@ -47,6 +47,7 @@ export function Dashboard() {
   const [countValues, setCountValues] = useState<Record<string, number>>({});
   const [shoppingSource, setShoppingSource] = useState<"inventory" | "new">("inventory");
   const [showSetup, setShowSetup] = useState(false);
+  const [initialAdminSetupAvailable, setInitialAdminSetupAvailable] = useState(false);
   const demoEnabled = process.env.NODE_ENV !== "production";
 
   const request = async (path: string, init?: RequestInit) => {
@@ -88,6 +89,20 @@ export function Dashboard() {
     };
     void restoreSession();
   }, []);
+  useEffect(() => {
+    if (demoEnabled) return;
+    const checkInitialAdminSetup = async () => {
+      try {
+        const response = await fetch("/api/auth/setup");
+        if (!response.ok) return;
+        const body = await response.json() as { available?: boolean };
+        setInitialAdminSetupAvailable(body.available === true);
+      } catch {
+        setInitialAdminSetupAvailable(false);
+      }
+    };
+    void checkInitialAdminSetup();
+  }, [demoEnabled]);
 
   const signInDemo = async (role: Role) => {
     setLoading(true);
@@ -195,7 +210,7 @@ export function Dashboard() {
         <section className="login-card">
           {demoEnabled ? <><span className="pill">Lokale Entwicklung</span><h2>Zur Bar</h2><p>Wähle eine vorbereitete Rolle, um ihre Berechtigungen auszuprobieren.</p><div className="role-grid">
             {demoRoles.map((role) => <button key={role} disabled={loading} onClick={() => void signInDemo(role)}>{roleLabels[role]}<small>{role === "ADMIN" ? "Inventar & Mitglieder" : role === "MANAGER" ? "Betrieb & Auswertungen" : "Meine Getränke"}</small></button>)}
-          </div></> : showSetup ? <><span className="pill">Ersteinrichtung</span><h2>Administration einrichten</h2><p>Verwende den einmaligen Einrichtungsschlüssel aus der sicheren Vercel-Variable.</p><form onSubmit={(event) => void setUpInitialAdmin(event)}><Field name="setupToken" label="Einrichtungsschlüssel" type="password" autoComplete="off" /><Field name="name" label="Name" autoComplete="name" /><Field name="email" label="E-Mail-Adresse" type="email" autoComplete="email" /><Field name="password" label="Passwort (mindestens 12 Zeichen)" type="password" autoComplete="new-password" /><button className="primary" disabled={loading}>Administrationszugang erstellen</button><button className="text-button" type="button" onClick={() => setShowSetup(false)}>Zur Anmeldung</button></form></> : <><span className="pill">Sicherer Zugang</span><h2>Anmelden</h2><p>Melde dich mit deiner E-Mail-Adresse und deinem Passwort an.</p><form onSubmit={(event) => void signIn(event)}><Field name="email" label="E-Mail-Adresse" type="email" autoComplete="email" /><Field name="password" label="Passwort" type="password" autoComplete="current-password" /><button className="primary" disabled={loading}>Anmelden</button><button className="text-button" type="button" onClick={() => setShowSetup(true)}>Erstzugang einrichten</button></form></>}
+          </div></> : showSetup && initialAdminSetupAvailable ? <><span className="pill">Ersteinrichtung</span><h2>Administration einrichten</h2><p>Verwende den einmaligen Einrichtungsschlüssel aus der sicheren Vercel-Variable.</p><form onSubmit={(event) => void setUpInitialAdmin(event)}><Field name="setupToken" label="Einrichtungsschlüssel" type="password" autoComplete="off" /><Field name="name" label="Name" autoComplete="name" /><Field name="email" label="E-Mail-Adresse" type="email" autoComplete="email" /><Field name="password" label="Passwort (mindestens 12 Zeichen)" type="password" autoComplete="new-password" /><button className="primary" disabled={loading}>Administrationszugang erstellen</button><button className="text-button" type="button" onClick={() => setShowSetup(false)}>Zur Anmeldung</button></form></> : <><span className="pill">Sicherer Zugang</span><h2>Anmelden</h2><p>Melde dich mit deiner E-Mail-Adresse und deinem Passwort an.</p><form onSubmit={(event) => void signIn(event)}><Field name="email" label="E-Mail-Adresse" type="email" autoComplete="email" /><Field name="password" label="Passwort" type="password" autoComplete="current-password" /><button className="primary" disabled={loading}>Anmelden</button>{initialAdminSetupAvailable && <button className="text-button" type="button" onClick={() => setShowSetup(true)}>Erstzugang einrichten</button>}</form></>}
           {message && <p className="notice">{message}</p>}
         </section>
       </main>

@@ -21,6 +21,10 @@ const setupSchema = z.object({
 
 class InitialAdminAlreadyCreatedError extends Error {}
 
+export async function GET() {
+  return NextResponse.json({ available: initialAdminSetupEnabled() });
+}
+
 export async function POST(request: Request) {
   if (!initialAdminSetupEnabled()) {
     return NextResponse.json({ error: "Der Erstzugang ist nicht verfügbar." }, { status: 404 });
