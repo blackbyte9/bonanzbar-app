@@ -97,7 +97,7 @@ Der Betriebsmodus ist in dieser ersten Version absichtlich ein expliziter Admin-
 ## Bereitstellung mit Vercel
 
 1. Importiere `blackbyte9/bonanzbar-app` als Vercel-Projekt, wähle **Root Directory** `apps/web` und das Framework **Next.js**.
-2. Setze den Build-Befehl auf `npm run build`. Dieser führt `prisma migrate deploy`, `prisma generate` und anschließend den Next.js-Build aus.
+2. Setze den Build-Befehl auf `npm run build`. Dieser führt `prisma migrate deploy`, `prisma generate` und anschließend den Next.js-Build aus. Kurzzeitige PostgreSQL-Migrationssperren bei parallelen Vercel-Deployments werden bis zu zweimal erneut versucht.
 3. Verbinde die Neon-Datenbank in Vercel mit **Production** und **Preview**. Setze `DATABASE_URL` in jeder Umgebung auf die jeweilige Neon-Verbindungs-URL: primärer Neon-Branch für Production, automatischer Neon-Branch für Preview.
 4. Setze `AUTH_SECRET` getrennt für Production und Preview. Setze `INITIAL_ADMIN_SETUP_TOKEN` nur für Production und entferne ihn nach dem Erstzugang.
 5. Stelle sicher, dass der erste Deployment-Branch `main` ist. Die Migration `20260912110000_initial_postgresql` wird beim ersten Production-Build automatisch auf den neuen Neon-Branch angewandt.
