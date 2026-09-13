@@ -183,9 +183,10 @@ export function Dashboard() {
   };
   const submit = async (event: FormEvent<HTMLFormElement>, path: string, payload: (form: HTMLFormElement) => unknown) => {
     event.preventDefault();
+    const form = event.currentTarget;
     try {
-      await request(path, { method: "POST", body: JSON.stringify(payload(event.currentTarget)) });
-      event.currentTarget.reset();
+      await request(path, { method: "POST", body: JSON.stringify(payload(form)) });
+      form.reset();
       setMessage("Gespeichert.");
       await refresh();
     } catch (error) {
