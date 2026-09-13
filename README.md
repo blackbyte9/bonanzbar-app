@@ -52,6 +52,8 @@ Konten können mehrere Rollen gleichzeitig haben. In der Mitgliederverwaltung we
 
 Die Bereiche **Administration**, **Barleitung** und **Mitglied** bleiben in der Oberfläche getrennt. Im Header kann ein Konto mit mehreren Rollen zwischen seinen zugewiesenen Bereichen wechseln; Navigation und Übersicht zeigen anschließend nur die Funktionen der gewählten Rolle. Die serverseitige Berechtigungsprüfung bleibt davon unabhängig und prüft weiterhin alle zugewiesenen Rollen.
 
+In der Administrationsansicht öffnet ein Klick auf einen Eintrag der Mitgliederliste dessen Bearbeitungsformular. Name, E-Mail-Adresse, Passwort, Rollen, Preisregel und Kontostatus können dort aktualisiert werden.
+
 Starte die mobile App in einem weiteren Terminal:
 
 ```powershell
