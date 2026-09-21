@@ -85,6 +85,78 @@ npm.cmd run dev:mobile
 
 Für einen Android-Emulator ist der Host üblicherweise über `http://10.0.2.2:3000` erreichbar; für den iOS-Simulator verwende `http://localhost:3000`. Ohne `EXPO_PUBLIC_API_URL` verwendet die App standardmäßig localhost. Produktive mobile Builds verwenden dieselbe E-Mail-/Passwortanmeldung wie die Web-App.
 
+## Mobile Apps veröffentlichen
+
+Die nativen Apps werden mit [Expo Application Services (EAS)](https://expo.dev/eas) gebaut. Die Build-Profile liegen versioniert in `apps/mobile/eas.json`; die Expo-Projekt-ID und alle Zugangsdaten bleiben außerhalb des Repositories.
+
+### Einmalig vorbereiten
+
+1. Richte einen Expo-Account, den [Apple Developer Account](https://developer.apple.com/programs/) und ein [Google-Play-Entwicklerkonto](https://play.google.com/console/signup) ein. Die Bundle- bzw. Paketkennung dieser App ist bereits `com.bonanzbar.app`; registriere sie beim ersten Store-Eintrag genau so.
+2. Lege vor dem Store-Build ein undurchsichtiges App-Icon mit mindestens 1.024 × 1.024 Pixeln sowie die erforderlichen Store-Screenshots und Datenschutzhinweise bereit. Hinterlege das Icon anschließend in `apps/mobile/app.json`; veröffentliche keine App mit dem Expo-Standardicon.
+3. Initialisiere das Expo-Projekt im Verzeichnis `apps/mobile`. Der folgende Befehl fordert zur Anmeldung auf und schreibt die nicht geheime Expo-Projekt-ID in die App-Konfiguration:
+
+   ```powershell
+   Set-Location apps\mobile
+   npx eas-cli@latest login
+   npx eas-cli@latest init
+   ```
+
+4. Konfiguriere die öffentliche Production-API für die Builds. Für `app.bonanzbar.de` lautet der Wert beispielsweise:
+
+   ```powershell
+   npx eas-cli@latest env:create --name EXPO_PUBLIC_API_URL --value https://app.bonanzbar.de --environment preview --visibility plaintext
+   npx eas-cli@latest env:create --name EXPO_PUBLIC_API_URL --value https://app.bonanzbar.de --environment production --visibility plaintext
+   ```
+
+   `EXPO_PUBLIC_API_URL` ist keine geheime Variable, wird aber beim Build eingebettet. Sie muss auf die produktive HTTPS-Web-App zeigen, niemals auf `localhost`, einen Preview-Branch oder eine Neon-URL.
+
+### Testen und einreichen
+
+1. Erzeuge zuerst einen internen Test-Build:
+
+   ```powershell
+   Set-Location apps\mobile
+   npx eas-cli@latest build --platform all --profile preview
+   ```
+
+   Android erzeugt dabei eine installierbare APK. Für iOS werden zum internen Verteilen registrierte Testgeräte benötigt; alternativ baue direkt das Production-Profil und teste über TestFlight.
+
+2. Erzeuge nach dem Smoke-Test einen Store-Build:
+
+   ```powershell
+   npx eas-cli@latest build --platform all --profile production
+   ```
+
+   Der Android-Build ist ein `.aab` für Google Play; der iOS-Build ist für App Store Connect vorgesehen. Prüfe vor dem Einreichen insbesondere Production-Anmeldung, Konsumeinträge und die Verbindung zu `https://app.bonanzbar.de`.
+
+3. Lade die iOS-Version mit EAS in App Store Connect hoch und teste sie zuerst in TestFlight:
+
+   ```powershell
+   npx eas-cli@latest submit --platform ios --profile production
+   ```
+
+   Erstelle zuvor in App Store Connect einen App-Eintrag mit `com.bonanzbar.app`, fülle Datenschutzangaben, Screenshots, Beschreibung und Altersfreigabe aus und reiche erst nach dem TestFlight-Test zur Apple-Prüfung ein.
+
+4. Lade die Android-`.aab` aus dem EAS-Build in der Google Play Console zuerst unter **Interner Test** hoch. Nach erfolgreichem Test erstelle eine Production-Veröffentlichung. Das automatisierte `eas submit` für Android ist optional und benötigt zusätzlich ein Google-Servicekonto.
+
+5. Nach Freigabe trage die tatsächlichen Store-URLs in Vercel ein und redeploye die Web-App:
+
+   ```text
+   NEXT_PUBLIC_IOS_APP_URL=https://apps.apple.com/app/id<APPLE_APP_ID>
+   NEXT_PUBLIC_ANDROID_APP_URL=https://play.google.com/store/apps/details?id=com.bonanzbar.app
+   ```
+
+### Download-Links auf der Anmeldung
+
+Sobald die nativen Apps veröffentlicht sind, können auf der Web-Anmeldung Store-Links angezeigt werden. Setze dazu in Vercel für die jeweilige Umgebung ausschließlich vollständige HTTPS-URLs:
+
+```text
+NEXT_PUBLIC_IOS_APP_URL=https://apps.apple.com/...
+NEXT_PUBLIC_ANDROID_APP_URL=https://play.google.com/store/apps/details?id=...
+```
+
+Die Buttons werden nur für konfigurierte, gültige HTTPS-URLs angezeigt. Nach der Änderung ist ein neues Deployment erforderlich.
+
 ## Autorisierung und Sicherheitsgrenzen
 
 Die API überprüft jede Änderung serverseitig; die Oberfläche ist nur eine Bedienhilfe. Die Rollenauswahl wird nie an Geschäftslogik-Endpunkte übergeben:

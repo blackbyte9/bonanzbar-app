@@ -51,6 +51,31 @@ type Bootstrap = {
 };
 
 const demoRoles: Role[] = ["ADMIN", "MANAGER", "USER"];
+type AppDownloadLink = { label: string; detail: string; href: string };
+
+function publicHttpsUrl(value: string | undefined): string | null {
+  if (!value) return null;
+  try {
+    const url = new URL(value);
+    return url.protocol === "https:" ? url.toString() : null;
+  } catch {
+    return null;
+  }
+}
+
+const appDownloadLinks: AppDownloadLink[] = [
+  {
+    label: "iPhone & iPad",
+    detail: "Im App Store öffnen",
+    href: publicHttpsUrl(process.env.NEXT_PUBLIC_IOS_APP_URL) ?? "",
+  },
+  {
+    label: "Android",
+    detail: "Bei Google Play öffnen",
+    href: publicHttpsUrl(process.env.NEXT_PUBLIC_ANDROID_APP_URL) ?? "",
+  },
+].filter((link): link is AppDownloadLink => Boolean(link.href));
+
 const date = (value: string) => new Intl.DateTimeFormat("de-DE", { dateStyle: "medium" }).format(new Date(value));
 const dateTime = (value: string) => new Intl.DateTimeFormat("de-DE", { dateStyle: "medium", timeStyle: "short" }).format(new Date(value));
 const dateTimeInput = (value: string) => {
@@ -289,6 +314,12 @@ export function Dashboard() {
           {demoEnabled === null ? <><span className="pill">Lokale Entwicklung</span><h2>Anmeldung wird vorbereitet</h2><p>Prüfe verfügbare Anmeldeoptionen …</p></> : demoEnabled ? <><span className="pill">Lokale Entwicklung</span><h2>Zur Bar</h2><p>Wähle eine vorbereitete Rolle, um ihre Berechtigungen auszuprobieren.</p><div className="role-grid">
             {demoRoles.map((role) => <button key={role} disabled={loading} onClick={() => void signInDemo(role)}>{roleLabels[role]}<small>{role === "ADMIN" ? "Inventar & Mitglieder" : role === "MANAGER" ? "Betrieb & Auswertungen" : "Meine Getränke"}</small></button>)}
           </div></> : showSetup && initialAdminSetupAvailable ? <><span className="pill">Ersteinrichtung</span><h2>Administration einrichten</h2><p>Verwende den einmaligen Einrichtungsschlüssel aus der sicheren Vercel-Variable.</p><form onSubmit={(event) => void setUpInitialAdmin(event)}><Field name="setupToken" label="Einrichtungsschlüssel" type="password" autoComplete="off" /><Field name="name" label="Name" autoComplete="name" /><Field name="email" label="E-Mail-Adresse" type="email" autoComplete="email" /><Field name="password" label="Passwort (mindestens 12 Zeichen)" type="password" autoComplete="new-password" /><button className="primary" disabled={loading}>Administrationszugang erstellen</button><button className="text-button" type="button" onClick={() => setShowSetup(false)}>Zur Anmeldung</button></form></> : <><span className="pill">Sicherer Zugang</span><h2>Anmelden</h2><p>Melde dich mit deiner E-Mail-Adresse und deinem Passwort an.</p><form onSubmit={(event) => void signIn(event)}><Field name="email" label="E-Mail-Adresse" type="email" autoComplete="email" /><Field name="password" label="Passwort" type="password" autoComplete="current-password" /><button className="primary" disabled={loading}>Anmelden</button>{initialAdminSetupAvailable && <button className="text-button" type="button" onClick={() => setShowSetup(true)}>Erstzugang einrichten</button>}</form></>}
+          {appDownloadLinks.length > 0 && <section className="app-downloads" aria-label="Bonanzbar-Apps herunterladen">
+            <span className="app-downloads-label">Unterwegs dabei</span>
+            <div className="app-download-links">
+              {appDownloadLinks.map((link) => <a href={link.href} key={link.label} target="_blank" rel="noreferrer"><b>{link.label}</b><small>{link.detail}</small></a>)}
+            </div>
+          </section>}
           {message && <Notice message={message} onDismiss={() => setMessage("")} />}
         </section>
       </main>

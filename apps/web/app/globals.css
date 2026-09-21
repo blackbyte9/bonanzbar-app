@@ -11,6 +11,14 @@ h1, h2 { font-family:Impact, Haettenschweiler, "Arial Narrow Bold", sans-serif; 
 .hero h1 { color:var(--accent); font-size:clamp(3.9rem,9vw,8rem); margin:.2rem 0; line-height:.86; }
 .hero p:not(.eyebrow) { font-size:1.1rem; max-width:28rem; line-height:1.65; }
 .login-card { margin:auto; width:min(28rem,90%); background:#1d1915; padding:3rem; border:1px solid var(--gold-dark); border-radius:5px; box-shadow:0 25px 80px #000b; }
+.app-downloads { display:grid; gap:.6rem; margin-top:1.35rem; padding-top:1.1rem; border-top:1px solid var(--line); }
+.app-downloads-label { color:var(--muted); font-size:.66rem; font-weight:bold; letter-spacing:.12em; text-transform:uppercase; }
+.app-download-links { display:grid; grid-template-columns:repeat(2, minmax(0, 1fr)); gap:.6rem; }
+.app-download-links a { display:grid; gap:.18rem; min-width:0; padding:.7rem .75rem; border:1px solid #73502b; border-radius:3px; color:#f6d782; background:#201810; text-decoration:none; }
+.app-download-links a:hover { border-color:#f4ca6b; background:#2d2116; color:#fff3d1; }
+.app-download-links a:focus-visible { outline:2px solid #f4ca6b; outline-offset:2px; }
+.app-download-links b { min-width:0; overflow-wrap:anywhere; font-size:.76rem; letter-spacing:.04em; text-transform:uppercase; }
+.app-download-links small { min-width:0; color:var(--muted); overflow-wrap:anywhere; font-size:.68rem; }
 .eyebrow { font-size:.7rem; font-weight:700; letter-spacing:.18em; color:var(--accent); margin:0 0 .5rem; }
 .login-card h2 { font-size:1.8rem; margin:.35rem 0 1rem; }
 .role-grid { display:grid; gap:.75rem; margin-top:1.5rem; }
@@ -159,6 +167,7 @@ textarea { resize:vertical; }
 .checkbox-label { display:flex; align-items:center; gap:.5rem; cursor:pointer; }
 .checkbox-label input { accent-color:var(--accent); width:1rem; height:1rem; padding:0; }
 @media (max-width:700px) { .auth-shell { grid-template-columns:1fr; } .hero { padding:4rem 2rem 2rem; border-right:0; border-bottom:1px solid #5a4323; } .login-card { margin:1rem auto 3rem; } .app-shell { padding:0 1rem 2rem; border:0; } .topbar { min-height:70px; margin:0 -1rem; padding:.7rem 1rem; align-items:flex-start; gap:1rem; } .brand-logo { width:145px; height:52px; } .header-actions { align-items:flex-end; flex-direction:column; gap:.5rem; } .role-switcher { max-width:100%; } .role-switcher button { padding:.4rem .45rem; font-size:.58rem; } .identity { align-items:flex-end; flex-direction:column; } .metrics, .split, .two-column { grid-template-columns:1fr; } .section-heading { align-items:start; gap:.8rem; flex-direction:column; } .member-summary { align-items:flex-start; } .edit-link { padding-top:.1rem; } .duty-card, .application-row { align-items:flex-start; flex-direction:column; } .application-actions { justify-content:flex-start; } }
+@media (max-width:390px) { .app-download-links { grid-template-columns:1fr; } }
 
 /* Start screen copied from bonanzbar-online; authentication keeps the app design. */
 .welcome-screen { position:fixed; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center; color:#fff; text-align:center; background:#080808; }
