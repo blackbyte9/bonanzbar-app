@@ -1,11 +1,31 @@
-import { PriceMode, PrismaClient, Role } from "../generated/prisma";
+import { DatabaseEnvironmentName, EventStatus, PriceMode, PrismaClient } from "../generated/prisma";
+import { localDemoAccounts } from "../lib/demo-mode";
 import { hashPassword } from "../lib/password";
 
 const prisma = new PrismaClient();
 
 async function main() {
+  const configuredEnvironment = process.env.BONANZBAR_DATABASE_ENVIRONMENT?.toLowerCase();
+  const databaseEnvironment = await prisma.databaseEnvironment.findUnique({ where: { id: "default" } });
+  if (
+    configuredEnvironment !== "development"
+    || databaseEnvironment?.name !== DatabaseEnvironmentName.DEVELOPMENT
+  ) {
+    throw new Error(
+      "Seed abgebrochen: Die lokale Variable BONANZBAR_DATABASE_ENVIRONMENT und der Datenbankmarker "
+      + "müssen beide auf \"development\" stehen. Prüfe den Neon-Branch und führe "
+      + "„npm.cmd run db:environment -- development“ aus, bevor du seedest.",
+    );
+  }
+
+  await prisma.eventDutyApplication.deleteMany();
+  await prisma.eventDuty.deleteMany();
+  await prisma.bulletinNote.deleteMany();
+  await prisma.barEvent.deleteMany();
   await prisma.billLine.deleteMany();
   await prisma.bill.deleteMany();
+  await prisma.costAllocation.deleteMany();
+  await prisma.consumptionCorrection.deleteMany();
   await prisma.consumption.deleteMany();
   await prisma.shoppingItem.deleteMany();
   await prisma.shoppingList.deleteMany();
@@ -18,17 +38,38 @@ async function main() {
 
   const passwordHash = await hashPassword("bonanzbar-demo");
   const [admin, manager, member] = await Promise.all([
-    prisma.user.create({ data: { name: "Ada Administration", email: "ada@bonanzbar.local", roles: [Role.ADMIN, Role.MANAGER, Role.USER], priceMode: PriceMode.PUBLIC, passwordHash } }),
-    prisma.user.create({ data: { name: "Max Barleitung", email: "max@bonanzbar.local", roles: [Role.MANAGER], priceMode: PriceMode.HELPER, passwordHash } }),
-    prisma.user.create({ data: { name: "Mia Mitglied", email: "mia@bonanzbar.local", roles: [Role.USER], priceMode: PriceMode.DYNAMIC, passwordHash } }),
+    prisma.user.create({ data: { name: "Ada Administration", email: localDemoAccounts.ADMIN.email, roles: [...localDemoAccounts.ADMIN.roles], priceMode: PriceMode.PUBLIC, passwordHash } }),
+    prisma.user.create({ data: { name: "Max Barleitung", email: localDemoAccounts.MANAGER.email, roles: [...localDemoAccounts.MANAGER.roles], priceMode: PriceMode.HELPER, passwordHash } }),
+    prisma.user.create({ data: { name: "Mia Mitglied", email: localDemoAccounts.USER.email, roles: [...localDemoAccounts.USER.roles], priceMode: PriceMode.DYNAMIC, passwordHash } }),
   ]);
   await prisma.barSettings.create({ data: { id: "default", isOfficiallyOpen: false, updatedBy: admin.id } });
+  const autumnEvent = await prisma.barEvent.create({
+    data: {
+      title: "Bonanzbar Herbstabend",
+      description: "Gemeinsamer Barabend mit Musik und gemütlichem Ausklang.",
+      location: "Bonanzbar",
+      startsAt: new Date("2026-10-17T18:00:00.000Z"),
+      endsAt: new Date("2026-10-18T01:00:00.000Z"),
+      status: EventStatus.PUBLISHED,
+      createdBy: manager.id,
+      duties: { create: [{ label: "Theke", slots: 2 }, { label: "Eintritt", slots: 1 }, { label: "Joker", slots: 1 }] },
+    },
+  });
+  await prisma.bulletinNote.create({
+    data: {
+      title: "Herbstabend vorbereiten",
+      body: "Bitte tragt euch für einen Dienst ein. Die Getränkebestellung wird in der Woche vor der Veranstaltung abgestimmt.",
+      pinned: true,
+      createdBy: manager.id,
+      eventId: autumnEvent.id,
+    },
+  });
 
   const items = await Promise.all([
-    prisma.inventoryItem.create({ data: { name: "Pils", category: "Bier", unit: "Flasche", priceCents: 280, helperPriceCents: 180, reorderLevel: 24 } }),
-    prisma.inventoryItem.create({ data: { name: "Rotwein", category: "Wein", unit: "Flasche", priceCents: 1600, helperPriceCents: 1000, reorderLevel: 6 } }),
-    prisma.inventoryItem.create({ data: { name: "Mineralwasser", category: "Softdrinks", unit: "Flasche", priceCents: 150, helperPriceCents: 100, reorderLevel: 18 } }),
-    prisma.inventoryItem.create({ data: { name: "Gin", category: "Spirituosen", unit: "Flasche", priceCents: 2450, helperPriceCents: 1800, reorderLevel: 3 } }),
+    prisma.inventoryItem.create({ data: { name: "Pils", category: "Bier", unit: "Flasche", packageSize: 20, priceCents: 280, helperPriceCents: 180, reorderLevel: 24 } }),
+    prisma.inventoryItem.create({ data: { name: "Rotwein", category: "Wein", unit: "Flasche", packageSize: 6, priceCents: 1600, helperPriceCents: 1000, reorderLevel: 6 } }),
+    prisma.inventoryItem.create({ data: { name: "Mineralwasser", category: "Softdrinks", unit: "Flasche", packageSize: 12, priceCents: 150, helperPriceCents: 100, reorderLevel: 18 } }),
+    prisma.inventoryItem.create({ data: { name: "Gin", category: "Spirituosen", unit: "Flasche", packageSize: 1, priceCents: 2450, helperPriceCents: 1800, reorderLevel: 3 } }),
   ]);
 
   const start = await prisma.stockCount.create({

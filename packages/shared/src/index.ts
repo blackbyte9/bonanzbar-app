@@ -20,6 +20,9 @@ export type Permission =
   | "inventory:read"
   | "inventory:write"
   | "users:manage"
+  | "events:read"
+  | "events:manage"
+  | "events:apply"
   | "counts:manage"
   | "shopping:manage"
   | "bills:manage"
@@ -27,21 +30,26 @@ export type Permission =
   | "consumption:create";
 
 const permissionsByRole: Record<Role, readonly Permission[]> = {
-  ADMIN: ["inventory:read", "inventory:write", "users:manage"],
+  ADMIN: ["inventory:read", "inventory:write", "users:manage", "events:read", "events:manage", "events:apply"],
   MANAGER: [
     "inventory:read",
+    "events:read",
+    "events:manage",
+    "events:apply",
     "counts:manage",
     "shopping:manage",
     "bills:manage",
     "reports:read",
     "consumption:create",
   ],
-  USER: ["inventory:read", "consumption:create"],
+  USER: ["inventory:read", "events:read", "events:apply", "consumption:create"],
 };
 
 export function normalizeRoles(assignedRoles: readonly Role[]): Role[] {
   const normalized = roles.filter((role) => assignedRoles.includes(role));
-  return normalized.includes("ADMIN") ? [...roles] : normalized;
+  if (normalized.includes("ADMIN")) return [...roles];
+  if (normalized.includes("MANAGER")) return ["MANAGER", "USER"];
+  return normalized;
 }
 
 export function hasRole(assignedRoles: readonly Role[], role: Role): boolean {
@@ -56,8 +64,18 @@ export interface InventoryItemInput {
   name: string;
   category: string;
   unit: string;
+  packageSize: number;
   reorderLevel: number;
   priceCents: number;
+}
+
+export function splitQuantityIntoPackages(quantity: number, packageSize: number): { packages: number; units: number } {
+  const normalizedQuantity = Math.max(0, Math.floor(quantity));
+  const normalizedPackageSize = Math.max(1, Math.floor(packageSize));
+  return {
+    packages: Math.floor(normalizedQuantity / normalizedPackageSize),
+    units: normalizedQuantity % normalizedPackageSize,
+  };
 }
 
 export function formatCurrency(cents: number, currency = "EUR"): string {

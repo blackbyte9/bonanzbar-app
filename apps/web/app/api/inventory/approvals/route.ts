@@ -21,6 +21,7 @@ export async function POST(request: Request) {
           name: true,
           proposedCategory: true,
           proposedUnit: true,
+          proposedPackageSize: true,
           proposedReorderLevel: true,
           proposedPriceCents: true,
           proposedHelperPriceCents: true,
@@ -30,6 +31,7 @@ export async function POST(request: Request) {
       if (
         shoppingItem.proposedCategory === null ||
         shoppingItem.proposedUnit === null ||
+        shoppingItem.proposedPackageSize === null ||
         shoppingItem.proposedReorderLevel === null ||
         shoppingItem.proposedPriceCents === null ||
         shoppingItem.proposedHelperPriceCents === null
@@ -45,6 +47,7 @@ export async function POST(request: Request) {
           where: { id: existingItem.id },
           data: {
             category: shoppingItem.proposedCategory,
+            packageSize: shoppingItem.proposedPackageSize,
             reorderLevel: shoppingItem.proposedReorderLevel,
             priceCents: shoppingItem.proposedPriceCents,
             helperPriceCents: shoppingItem.proposedHelperPriceCents,
@@ -56,6 +59,7 @@ export async function POST(request: Request) {
             name: shoppingItem.name,
             category: shoppingItem.proposedCategory,
             unit: shoppingItem.proposedUnit,
+            packageSize: shoppingItem.proposedPackageSize,
             reorderLevel: shoppingItem.proposedReorderLevel,
             priceCents: shoppingItem.proposedPriceCents,
             helperPriceCents: shoppingItem.proposedHelperPriceCents,
@@ -72,7 +76,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Diese Einkaufsposition ist bereits freigegeben oder nicht vorhanden." }, { status: 409 });
     }
     if (result.kind === "incomplete") {
-      return NextResponse.json({ error: "Bitte speichere zuerst Kategorie, Einheit, Meldebestand sowie regulären Preis und Helferpreis." }, { status: 400 });
+      return NextResponse.json({ error: "Bitte speichere zuerst Kategorie, Einheit, Gebindegröße, Meldebestand sowie regulären Preis und Helferpreis." }, { status: 400 });
     }
     return NextResponse.json(result.item, { status: 201 });
   } catch (error) {

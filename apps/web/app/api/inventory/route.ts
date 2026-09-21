@@ -8,6 +8,7 @@ const itemSchema = z.object({
   name: z.string().trim().min(2).max(100),
   category: z.string().trim().min(2).max(60),
   unit: z.string().trim().min(1).max(30),
+  packageSize: z.coerce.number().int().min(1).max(100000),
   reorderLevel: z.coerce.number().int().min(0).max(100000),
   priceCents: z.coerce.number().int().min(0).max(100000000),
   helperPriceCents: z.coerce.number().int().min(0).max(100000000),

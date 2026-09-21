@@ -1,4 +1,4 @@
-import { formatCurrency, roleLabels, type Role } from "@bonanzbar/shared";
+import { formatCurrency, roleLabels, splitQuantityIntoPackages, type Role } from "@bonanzbar/shared";
 import { StatusBar } from "expo-status-bar";
 import { useEffect, useMemo, useState } from "react";
 import {
@@ -14,7 +14,7 @@ import {
   View,
 } from "react-native";
 
-type Item = { id: string; name: string; category: string; unit: string; priceCents: number; helperPriceCents: number; effectivePriceCents: number; reorderLevel: number; onHand: number };
+type Item = { id: string; name: string; category: string; unit: string; packageSize: number; priceCents: number; helperPriceCents: number; effectivePriceCents: number; reorderLevel: number; onHand: number };
 type Snapshot = { user: { name: string; roles: Role[] }; inventory: Item[] };
 
 const API_URL = process.env.EXPO_PUBLIC_API_URL ?? "http://localhost:3000";
@@ -22,6 +22,11 @@ const demoTokens: Record<Role, string> = {
   ADMIN: "demo-admin-local-only",
   MANAGER: "demo-manager-local-only",
   USER: "demo-member-local-only",
+};
+const formatStockQuantity = (quantity: number, item: Pick<Item, "unit" | "packageSize">) => {
+  if (item.packageSize === 1) return `${quantity}`;
+  const { packages, units } = splitQuantityIntoPackages(quantity, item.packageSize);
+  return `${packages} Geb.${units > 0 ? ` + ${units}` : ""}`;
 };
 
 export default function App() {
@@ -115,7 +120,7 @@ export default function App() {
     <SafeAreaView style={styles.page}>
       <StatusBar style="light" />
       <View style={styles.header}>
-        <View style={styles.brand}><Image source={require("./assets/bonanzbar-logo.png")} style={styles.logo} resizeMode="contain" /><View><Text style={styles.kicker}>BONANZBAR</Text><Text style={styles.title}>Die Bar in deiner Hand.</Text></View></View>
+        <View style={styles.brand}><Image source={require("./assets/bonanzbar-logo.png")} style={styles.logo} resizeMode="contain" /><View style={styles.brandCopy}><Text style={styles.kicker}>BONANZBAR</Text><Text style={styles.title}>Die Bar in deiner Hand.</Text></View></View>
         <Pressable onPress={() => void load()} style={styles.refresh}><Text style={styles.refreshText}>{loading ? "..." : "Aktualisieren"}</Text></Pressable>
       </View>
       {demoMode && <View style={styles.roles}>
@@ -132,7 +137,7 @@ export default function App() {
             {!canRecordConsumption && <View style={styles.managerNote}><Text style={styles.cardTitle}>Betriebsansicht</Text><Text style={styles.muted}>Für Zählungen, Einkaufslisten, Rechnungen und Zeitraumberichte nutze die Web-Verwaltung.</Text></View>}
             <Text style={styles.sectionTitle}>Verfügbares Inventar</Text>
           </>}
-          renderItem={({ item }) => <Pressable style={styles.item} onPress={() => canRecordConsumption ? setSelectedItem(item) : undefined}><View><Text style={styles.itemName}>{item.name}</Text><Text style={styles.muted}>{item.category} · {formatCurrency(item.effectivePriceCents)}</Text></View><View style={styles.stock}><Text style={[styles.stockValue, item.onHand <= item.reorderLevel && styles.low]}>{item.onHand}</Text><Text style={styles.muted}>{item.unit}</Text></View></Pressable>}
+          renderItem={({ item }) => <Pressable style={styles.item} onPress={() => canRecordConsumption ? setSelectedItem(item) : undefined}><View style={styles.itemDetails}><Text style={styles.itemName}>{item.name}</Text><Text style={styles.muted}>{item.category} · {formatCurrency(item.effectivePriceCents)}</Text></View><View style={styles.stock}><Text style={[styles.stockValue, item.onHand <= item.reorderLevel && styles.low]}>{formatStockQuantity(item.onHand, item)}</Text><Text style={styles.muted}>{item.packageSize === 1 ? item.unit : `${item.packageSize} ${item.unit} je Geb.`}</Text></View></Pressable>}
           ListEmptyComponent={<Text style={styles.muted}>Kein Inventar verfügbar. Starte die Web-API und fülle die Beispieldaten ein.</Text>}
         />
       )}
@@ -147,13 +152,14 @@ const styles = StyleSheet.create({
   loginTitle: { color: "#f4ca6b", fontSize: 27, fontWeight: "700" },
   loginInput: { color: "#f7f1e4", backgroundColor: "#1c1916", borderWidth: 1, borderColor: "#655846", borderRadius: 3, paddingHorizontal: 13, paddingVertical: 12 },
   header: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingHorizontal: 20, paddingTop: 20, paddingBottom: 16, backgroundColor: "#8d3216", borderBottomWidth: 2, borderBottomColor: "#c8a456" },
-  brand: { flexDirection: "row", alignItems: "center", flex: 1, marginRight: 10 },
+  brand: { flexDirection: "row", alignItems: "center", flex: 1, minWidth: 0, marginRight: 10 },
+  brandCopy: { flexShrink: 1, minWidth: 0 },
   logo: { width: 50, height: 42, marginRight: 10 },
   kicker: { color: "#f2ce78", letterSpacing: 2, fontSize: 11, fontWeight: "700" },
-  title: { color: "#fff8ed", fontSize: 27, fontWeight: "700", marginTop: 3 },
+  title: { color: "#fff8ed", flexShrink: 1, fontSize: 27, fontWeight: "700", marginTop: 3 },
   refresh: { borderWidth: 1, borderColor: "#f2ce78", paddingHorizontal: 11, paddingVertical: 7, borderRadius: 3 },
   refreshText: { color: "#fff8ed", fontWeight: "700", fontSize: 12 },
-  roles: { flexDirection: "row", paddingHorizontal: 20, gap: 7, paddingBottom: 15, paddingTop: 15, backgroundColor: "#1c1916" },
+  roles: { flexDirection: "row", flexWrap: "wrap", paddingHorizontal: 20, gap: 7, paddingBottom: 15, paddingTop: 15, backgroundColor: "#1c1916" },
   role: { paddingVertical: 7, paddingHorizontal: 11, borderRadius: 3, backgroundColor: "#29231d", borderWidth: 1, borderColor: "#4d4233" },
   roleSelected: { backgroundColor: "#8d3216", borderColor: "#c8a456" },
   roleText: { fontSize: 12, color: "#d8cfbf", fontWeight: "700" },
@@ -167,15 +173,16 @@ const styles = StyleSheet.create({
   consumeCard: { backgroundColor: "#2b2017", borderWidth: 1, borderColor: "#a57838", padding: 15, borderRadius: 4, marginBottom: 10 },
   cardTitle: { color: "#f4ca6b", fontWeight: "700", fontSize: 15 },
   muted: { color: "#b9b0a2", marginTop: 3, fontSize: 12 },
-  consumeRow: { flexDirection: "row", alignItems: "center", gap: 9, marginTop: 12 },
+  consumeRow: { flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: 9, marginTop: 12 },
   input: { color: "#f7f1e4", backgroundColor: "#120f0d", borderWidth: 1, borderColor: "#80652e", borderRadius: 3, paddingHorizontal: 10, paddingVertical: 8, width: 52 },
   primary: { backgroundColor: "#8d3216", borderWidth: 1, borderColor: "#c17036", paddingVertical: 9, paddingHorizontal: 13, borderRadius: 3 },
   primaryText: { color: "white", fontWeight: "700", fontSize: 12 },
   cancel: { color: "#f1c86e", fontWeight: "700", fontSize: 12 },
   sectionTitle: { fontWeight: "700", fontSize: 16, color: "#f4ca6b", marginTop: 8, marginBottom: 2 },
-  item: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", backgroundColor: "#1c1916", borderWidth: 1, borderColor: "#4d4233", borderRadius: 4, padding: 15 },
-  itemName: { color: "#f7f1e4", fontWeight: "700", fontSize: 15 },
-  stock: { alignItems: "flex-end" },
+  item: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", minWidth: 0, backgroundColor: "#1c1916", borderWidth: 1, borderColor: "#4d4233", borderRadius: 4, padding: 15 },
+  itemDetails: { flex: 1, flexShrink: 1, minWidth: 0 },
+  itemName: { color: "#f7f1e4", flexShrink: 1, fontWeight: "700", fontSize: 15 },
+  stock: { alignItems: "flex-end", flexShrink: 1, minWidth: 0, marginLeft: 10 },
   stockValue: { color: "#f1c86e", fontSize: 20, fontWeight: "700" },
   low: { color: "#ff9a58" },
 });

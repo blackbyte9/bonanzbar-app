@@ -2,13 +2,11 @@ import type { PriceMode, Role } from "@bonanzbar/shared";
 import { hasPermission, normalizeRoles, type Permission } from "@bonanzbar/shared";
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { isDemoAuthEnabled, localDemoAccountForToken } from "@/lib/demo-mode";
+import { jsonError } from "@/lib/http";
 import { readSessionToken, sessionCookieName } from "@/lib/session";
 
-const demoTokens: Record<string, string> = {
-  "demo-admin-local-only": "ada@bonanzbar.local",
-  "demo-manager-local-only": "max@bonanzbar.local",
-  "demo-member-local-only": "mia@bonanzbar.local",
-};
+export { isDemoAuthEnabled, localDemoTokens } from "@/lib/demo-mode";
 
 export type AuthenticatedUser = {
   id: string;
@@ -53,6 +51,14 @@ function authenticatedUser(user: {
   };
 }
 
+async function findUser(where: { id: string } | { email: string }) {
+  try {
+    return await prisma.user.findUnique({ where });
+  } catch (error) {
+    return jsonError(error);
+  }
+}
+
 export async function authenticate(request: Request): Promise<AuthenticatedUser | Response> {
   const authorization = request.headers.get("authorization");
   const bearerToken = authorization?.startsWith("Bearer ") ? authorization.slice(7) : undefined;
@@ -62,17 +68,22 @@ export async function authenticate(request: Request): Promise<AuthenticatedUser 
     if (cookieToken && !unsafeCookieRequestHasTrustedOrigin(request)) {
       return NextResponse.json({ error: "Die Anfrage stammt nicht von dieser Website." }, { status: 403 });
     }
-    const user = await prisma.user.findUnique({ where: { id: session.userId } });
+    const user = await findUser({ id: session.userId });
+    if (user instanceof Response) return user;
     if (!user || !user.active) return unauthorized("Dieses Konto ist nicht verfügbar.");
     return authenticatedUser(user);
   }
 
   const demoToken = request.headers.get("x-bonanzbar-token");
-  const email = isDemoAuthEnabled() && demoToken ? demoTokens[demoToken] : undefined;
+  const email = isDemoAuthEnabled() && demoToken ? localDemoAccountForToken(demoToken)?.email : undefined;
   if (!email) return unauthorized("Eine gültige Sitzung ist erforderlich.");
 
-  const user = await prisma.user.findUnique({ where: { email } });
-  if (!user || !user.active) return unauthorized("Dieses Konto ist nicht verfügbar.");
+  const user = await findUser({ email });
+  if (user instanceof Response) return user;
+  if (!user) {
+    return unauthorized("Die lokalen Demo-Daten fehlen. Prüfe zuerst den Development-Branch mit „npm.cmd run db:environment -- development“ und führe danach „npm.cmd run db:seed“ aus.");
+  }
+  if (!user.active) return unauthorized("Dieses Konto ist nicht verfügbar.");
 
   return authenticatedUser(user);
 }
@@ -88,13 +99,3 @@ export async function requirePermission(
   }
   return user;
 }
-
-export function isDemoAuthEnabled() {
-  return process.env.NODE_ENV !== "production" && process.env.DEMO_AUTH_ENABLED !== "false";
-}
-
-export const localDemoTokens = {
-  ADMIN: "demo-admin-local-only",
-  MANAGER: "demo-manager-local-only",
-  USER: "demo-member-local-only",
-} as const;

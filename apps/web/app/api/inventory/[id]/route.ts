@@ -8,6 +8,7 @@ const updateSchema = z.object({
   name: z.string().trim().min(2).max(100).optional(),
   category: z.string().trim().min(2).max(60).optional(),
   unit: z.string().trim().min(1).max(30).optional(),
+  packageSize: z.coerce.number().int().min(1).max(100000).optional(),
   reorderLevel: z.coerce.number().int().min(0).max(100000).optional(),
   priceCents: z.coerce.number().int().min(0).max(100000000).optional(),
   helperPriceCents: z.coerce.number().int().min(0).max(100000000).optional(),

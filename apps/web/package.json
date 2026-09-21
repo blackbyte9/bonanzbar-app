@@ -7,10 +7,12 @@
     "build": "node scripts/migrate-deploy.cjs && prisma generate && next build",
     "start": "next start",
     "typecheck": "tsc --noEmit",
+    "test": "tsx --test tests/demo-mode-parity.test.ts",
     "db:generate": "prisma generate",
-    "db:migrate": "prisma migrate dev --name development",
-    "db:deploy": "prisma migrate deploy",
-    "db:seed": "prisma db seed"
+    "db:migrate": "node scripts/prisma-with-local-env.cjs migrate dev --name development",
+    "db:deploy": "node scripts/prisma-with-local-env.cjs migrate deploy",
+    "db:environment": "node scripts/set-database-environment.cjs",
+    "db:seed": "node scripts/prisma-with-local-env.cjs db seed"
   },
   "dependencies": {
     "@bonanzbar/shared": "*",

@@ -5,6 +5,10 @@ import { jsonError, requestJson } from "@/lib/http";
 
 const inputSchema = z.object({ role: z.enum(["ADMIN", "MANAGER", "USER"]) });
 
+export async function GET() {
+  return NextResponse.json({ enabled: isDemoAuthEnabled() });
+}
+
 export async function POST(request: Request) {
   if (!isDemoAuthEnabled()) return NextResponse.json({ error: "Die Demo-Anmeldung ist deaktiviert." }, { status: 404 });
   try {
