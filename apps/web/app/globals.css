@@ -3,7 +3,7 @@
 body { margin:0; min-height:100vh; color:var(--ink); background:radial-gradient(circle at 12% 0%, #382016 0, transparent 28rem), radial-gradient(circle at 88% 10%, #2a2117 0, transparent 25rem), var(--paper); font-family:Arial, Helvetica, sans-serif; }
 button, input, select, textarea { font:inherit; }
 button, input, select, textarea { max-width:100%; min-width:0; }
-button { cursor:pointer; }
+button { cursor:pointer; overflow-wrap:anywhere; }
 h1, h2 { font-family:Impact, Haettenschweiler, "Arial Narrow Bold", sans-serif; font-weight:400; letter-spacing:.045em; text-transform:uppercase; }
 .hero-logo { width:min(290px, 80%); max-height:150px; object-fit:contain; object-position:left center; margin:0 0 2rem; }
 .auth-shell { min-height:100vh; display:grid; grid-template-columns:1.2fr .8fr; background:linear-gradient(90deg, #080706d9, #08070678), radial-gradient(circle at 25% 25%, #7e2d15 0, transparent 27rem), #12100e; }
@@ -111,7 +111,7 @@ textarea { resize:vertical; }
 .shopping-list-tabs button.selected { color:#fff7e7; border-color:var(--accent); background:#332719; }
 .list-detail-heading { display:flex; align-items:flex-start; justify-content:space-between; gap:.8rem; border-top:1px solid var(--line); padding-top:1rem; }
 .list-detail-heading h3 { margin:0; color:#f5d27a; font-size:1rem; letter-spacing:.05em; text-transform:uppercase; }
-.list-detail-heading .primary { white-space:nowrap; }
+.list-detail-heading .primary { white-space:normal; }
 .shopping-items { display:grid; gap:.45rem; margin-top:.8rem; }
 .shopping-item { display:flex; grid-template-columns:none; align-items:center; gap:.65rem; padding:.65rem; border:1px solid #40372d; border-radius:3px; background:#171411; cursor:pointer; }
 .shopping-item input { accent-color:var(--accent); width:1rem; height:1rem; padding:0; }
@@ -137,8 +137,9 @@ textarea { resize:vertical; }
 .pricing-users { display:grid; }
 .pricing-user { display:flex; align-items:center; justify-content:space-between; gap:1rem; padding:.9rem 0; border-top:1px solid var(--line); }
 .pricing-user:first-child { border-top:0; }
+.pricing-user > span { flex:1 1 14rem; }
 .pricing-user small { display:block; margin-top:.2rem; color:var(--muted); }
-.pricing-user label { min-width:230px; }
+.pricing-user label { flex:0 1 230px; min-width:0; }
 .event-list { display:grid; gap:1rem; }
 .event-card { padding:1rem; border:1px solid var(--line); border-radius:3px; background:#171411; }
 .event-heading { display:grid; grid-template-columns:1fr auto; align-items:start; gap:.5rem 1rem; }
@@ -166,7 +167,28 @@ textarea { resize:vertical; }
 .note-actions { display:flex; gap:.7rem; margin-top:.8rem; }
 .checkbox-label { display:flex; align-items:center; gap:.5rem; cursor:pointer; }
 .checkbox-label input { accent-color:var(--accent); width:1rem; height:1rem; padding:0; }
-@media (max-width:700px) { .auth-shell { grid-template-columns:1fr; } .hero { padding:4rem 2rem 2rem; border-right:0; border-bottom:1px solid #5a4323; } .login-card { margin:1rem auto 3rem; } .app-shell { padding:0 1rem 2rem; border:0; } .topbar { min-height:70px; margin:0 -1rem; padding:.7rem 1rem; align-items:flex-start; gap:1rem; } .brand-logo { width:145px; height:52px; } .header-actions { align-items:flex-end; flex-direction:column; gap:.5rem; } .role-switcher { max-width:100%; } .role-switcher button { padding:.4rem .45rem; font-size:.58rem; } .identity { align-items:flex-end; flex-direction:column; } .metrics, .split, .two-column { grid-template-columns:1fr; } .section-heading { align-items:start; gap:.8rem; flex-direction:column; } .member-summary { align-items:flex-start; } .edit-link { padding-top:.1rem; } .duty-card, .application-row { align-items:flex-start; flex-direction:column; } .application-actions { justify-content:flex-start; } }
+@media (max-width:700px) {
+  .auth-shell { grid-template-columns:1fr; }
+  .hero { padding:4rem 2rem 2rem; border-right:0; border-bottom:1px solid #5a4323; }
+  .login-card { margin:1rem auto 3rem; }
+  .app-shell { padding:0 1rem 2rem; border:0; }
+  .topbar { display:grid; grid-template-columns:minmax(0, 1fr); min-height:0; margin:0 -1rem; padding:.75rem 1rem; align-items:start; gap:.75rem; }
+  .brand-lockup { min-width:0; }
+  .brand-logo { width:min(175px, 62vw); height:52px; }
+  .header-actions { display:grid; width:100%; grid-template-columns:minmax(0, 1fr); align-items:stretch; gap:.6rem; }
+  .role-switcher { display:flex; width:100%; max-width:none; flex-wrap:wrap; overflow:visible; gap:1px; padding:1px; }
+  .role-switcher button, .role-switcher button:first-child { flex:1 1 max-content; border:0; padding:.5rem .55rem; font-size:.62rem; white-space:normal; }
+  .identity { width:100%; align-items:center; justify-content:space-between; flex-direction:row; gap:.65rem; }
+  .identity > span { min-width:0; overflow-wrap:anywhere; }
+  .identity .text-button { flex:0 0 auto; }
+  .metrics, .split, .two-column { grid-template-columns:1fr; }
+  .section-heading { align-items:start; gap:.8rem; flex-direction:column; }
+  .member-summary { align-items:flex-start; }
+  .edit-link { padding-top:.1rem; }
+  .duty-card, .application-row, .list-detail-heading, .pricing-user { align-items:stretch; flex-direction:column; }
+  .application-actions { justify-content:flex-start; }
+  .list-detail-heading .primary, .pricing-user label { width:100%; }
+}
 @media (max-width:390px) { .app-download-links { grid-template-columns:1fr; } }
 
 /* Start screen copied from bonanzbar-online; authentication keeps the app design. */
