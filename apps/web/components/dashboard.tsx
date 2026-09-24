@@ -2,8 +2,10 @@
 
 import { formatCurrency, priceModeLabels, priceModes, roleLabels, roles as availableRoles, splitQuantityIntoPackages, type PriceMode, type Role } from "@bonanzbar/shared";
 import { FormEvent, useEffect, useMemo, useState } from "react";
+import { DailySpecialEditor, EventLedgerAdministration, EventRecapAdministration, HandoverTaskBoard, SocialWall } from "@/components/partner-operations";
+import { PublicProgram } from "@/components/public-program";
 
-type Item = { id: string; name: string; category: string; unit: string; packageSize: number; priceCents: number; helperPriceCents: number; effectivePriceCents: number; reorderLevel: number; onHand: number };
+type Item = { id: string; name: string; category: string; unit: string; packageSize: number; priceCents: number; helperPriceCents: number; guestPriceCents: number; effectivePriceCents: number; reorderLevel: number; onHand: number };
 type Count = { id: string; label: string; countedAt: string; lines: { itemId: string; quantity: number }[] };
 type CountValue = { packages: number; units: number };
 type User = { id: string; name: string; email: string; roles?: Role[]; priceMode?: PriceMode; active?: boolean };
@@ -27,8 +29,12 @@ type ConsumptionCorrection = { id: string; note: string; status: "PENDING" | "RE
 type EventApplicationStatus = "APPLIED" | "CONFIRMED" | "DECLINED";
 type EventApplication = { id: string; dutyId?: string; userId?: string; status: EventApplicationStatus; note: string | null; createdAt?: string; user?: { id: string; name: string; email: string } };
 type EventDuty = { id: string; label: string; slots: number; applications: EventApplication[] };
-type BarEvent = { id: string; title: string; description: string | null; location: string | null; startsAt: string; endsAt: string | null; status: "DRAFT" | "PUBLISHED" | "CANCELLED"; duties: EventDuty[] };
+type BarEvent = { id: string; title: string; description: string | null; location: string | null; bandInfo: string | null; bandHomepageUrl: string | null; bandImageUrls: string[]; ticketUrl: string | null; youtubeUrl: string | null; startsAt: string; endsAt: string | null; status: "DRAFT" | "PUBLISHED" | "CANCELLED"; duties: EventDuty[] };
 type BulletinNote = { id: string; title: string; body: string; pinned: boolean; createdAt: string; event: { id: string; title: string } | null };
+type EventRecap = { id: string; title: string; body: string; imageUrls: string[]; published: boolean; event: { id: string; title: string; startsAt: string } };
+type SocialPost = { id: string; body: string; imageUrl: string | null; createdAt: string; author: { id: string; name: string }; comments: { id: string; body: string; createdAt: string; author: { id: string; name: string } }[] };
+type HandoverTask = { id: string; text: string; priority: "NORMAL" | "URGENT"; status: "OPEN" | "IN_PROGRESS" | "DONE"; assignee: { id: string; name: string } | null; creator: { id: string; name: string } };
+type EventLedger = { id: string; closed: boolean; event: { id: string; title: string; startsAt: string }; entries: { id: string; label: string; amountCents: number; kind: "INCOME" | "EXPENSE"; occurredAt: string }[] };
 type Bootstrap = {
   user: { id: string; name: string; email: string; roles: Role[] };
   inventory: Item[];
@@ -45,12 +51,18 @@ type Bootstrap = {
   correctionCandidates?: Consumption[];
   allocations?: CostAllocation[];
   correctionRequests?: ConsumptionCorrection[];
-  barSettings?: { isOfficiallyOpen: boolean; updatedAt: string };
+  barSettings?: { isOfficiallyOpen: boolean; updatedAt: string; dailySpecialTitle?: string | null; dailySpecialDescription?: string | null; dailySpecialPriceCents?: number | null; dailySpecialDate?: string | null; dailySpecialActive?: boolean };
   events?: BarEvent[];
   notes?: BulletinNote[];
+  eventRecaps?: EventRecap[];
+  publishedRecaps?: EventRecap[];
+  socialPosts?: SocialPost[];
+  handoverTasks?: HandoverTask[];
+  eventLedgers?: EventLedger[];
+  dailySpecial?: { title: string; description: string | null; priceCents: number; date: string } | null;
 };
 
-const demoRoles: Role[] = ["ADMIN", "MANAGER", "USER"];
+const demoRoles: Role[] = ["ADMIN", "MANAGER", "USER", "GUEST"];
 type AppDownloadLink = { label: string; detail: string; href: string };
 
 function publicHttpsUrl(value: string | undefined): string | null {
@@ -117,18 +129,20 @@ export function Dashboard() {
   const [message, setMessage] = useState("");
   const [loading, setLoading] = useState(false);
   const [activeRole, setActiveRole] = useState<Role | null>(null);
+  const [previewRole, setPreviewRole] = useState<Role | null>(null);
   const [tab, setTab] = useState("overview");
   const [countValues, setCountValues] = useState<Record<string, CountValue>>({});
   const [shoppingSource, setShoppingSource] = useState<"inventory" | "new">("inventory");
   const [showSetup, setShowSetup] = useState(false);
   const [initialAdminSetupAvailable, setInitialAdminSetupAvailable] = useState(false);
   const [demoEnabled, setDemoEnabled] = useState<boolean | null>(null);
+  const [showPublicProgram, setShowPublicProgram] = useState(false);
 
   const request = async <T extends object = { error?: string }>(path: string, init?: RequestInit): Promise<T> => {
     const response = await fetch(path, {
       ...init,
       credentials: "same-origin",
-      headers: { "Content-Type": "application/json", ...(demoToken ? { "x-bonanzbar-token": demoToken } : {}), ...(init?.headers ?? {}) },
+      headers: { "Content-Type": "application/json", ...(demoToken ? { "x-bonanzbar-token": demoToken } : {}), ...(previewRole ? { "x-bonanzbar-preview-role": previewRole } : {}), ...(init?.headers ?? {}) },
     });
     if (response.status === 204) return {} as T;
     const body = await readApiResponse<T & { error?: string }>(response);
@@ -302,6 +316,7 @@ export function Dashboard() {
     return <div className="welcome-screen"><img src="/skull.png" alt="Bonanzbar Totenkopf" /><h1>WELCOME<br /><small>IN DER BONANZBAR</small></h1></div>;
   }
   if (!sessionActive || !data) {
+    if (showPublicProgram) return <PublicProgram onSignIn={() => setShowPublicProgram(false)} />;
     return (
       <main className="auth-shell">
         <section className="hero">
@@ -320,21 +335,28 @@ export function Dashboard() {
               {appDownloadLinks.map((link) => <a href={link.href} key={link.label} target="_blank" rel="noreferrer"><b>{link.label}</b><small>{link.detail}</small></a>)}
             </div>
           </section>}
+          <button type="button" className="text-button public-program-button" onClick={() => setShowPublicProgram(true)}>Öffentliches Programm ansehen</button>
           {message && <Notice message={message} onDismiss={() => setMessage("")} />}
         </section>
       </main>
     );
   }
 
-  const visibleRole = activeRole && data.user.roles.includes(activeRole) ? activeRole : data.user.roles[0] ?? "USER";
+  const visibleRole = previewRole ?? (activeRole && data.user.roles.includes(activeRole) ? activeRole : data.user.roles[0] ?? "USER");
   const isAdmin = visibleRole === "ADMIN";
   const isManager = visibleRole === "MANAGER";
   const isMember = visibleRole === "USER";
+  const isGuest = visibleRole === "GUEST";
+  const canManageOps = isAdmin || isManager;
   const homeActions = isAdmin
     ? [
         { tab: "inventory", title: "Inventar", description: "Artikel & Freigaben", status: lowStock.length > 0 ? `${lowStock.length} nachbestellen` : "Bestand im Blick", tone: lowStock.length > 0 ? "alert" : undefined },
         { tab: "users", title: "Mitglieder", description: "Konten & Rollen", status: `${data.users?.filter((user) => user.active).length ?? 0} aktiv` },
         { tab: "pricing", title: "Preise", description: "Betriebsmodus & Regeln", status: data.barSettings?.isOfficiallyOpen ? "Offiziell geöffnet" : "Helferbetrieb" },
+        { tab: "events", title: "Programm", description: "Veranstaltungen & Bandinfos", status: upcomingEvents.length > 0 ? `${upcomingEvents.length} geplant` : "Noch nichts geplant" },
+        { tab: "recaps", title: "Rückblicke", description: "Konzerte veröffentlichen", status: `${data.eventRecaps?.length ?? 0} angelegt` },
+        { tab: "ledgers", title: "Abrechnung", description: "Einnahmen & Ausgaben", status: `${data.eventLedgers?.length ?? 0} eröffnet` },
+        { tab: "social", title: "Social Wall", description: "Beiträge der Crew", status: `${data.socialPosts?.length ?? 0} aktuell` },
         { tab: "reset", title: "Datenverwaltung", description: "Betriebsdaten zurücksetzen", status: "Nur Administration", tone: "danger" },
       ]
     : isManager
@@ -347,22 +369,47 @@ export function Dashboard() {
           { tab: "corrections", title: "Korrekturen", description: "Einträge prüfen", status: pendingCorrections > 0 ? `${pendingCorrections} offen` : "Keine offenen Anfragen", tone: pendingCorrections > 0 ? "alert" : undefined },
           { tab: "reports", title: "Verkaufsbericht", description: "Zwischen Zählungen auswerten", status: "Absatz im Überblick" },
           { tab: "notes", title: "Notizen", description: "Infos für die Crew", status: `${data.notes?.length ?? 0} aktuell` },
+          { tab: "tasks", title: "Übergabe", description: "To-dos & Verantwortung", status: `${data.handoverTasks?.filter((task) => task.status !== "DONE").length ?? 0} offen` },
+          { tab: "social", title: "Social Wall", description: "Beiträge der Crew", status: `${data.socialPosts?.length ?? 0} aktuell` },
         ]
-      : [
+      : isMember
+        ? [
           { tab: "consume", title: "Drinklist", description: "Deine Getränkestriche", status: "Getränk eintragen" },
           { tab: "events", title: "Veranstaltungen", description: "Programm & Dienste", status: upcomingEvents.length > 0 ? `${upcomingEvents.length} geplant` : "Noch nichts geplant" },
           { tab: "notes", title: "Crew-Notizen", description: "Aktuelle Infos", status: `${data.notes?.filter((note) => note.pinned).length ?? 0} angeheftet` },
+          { tab: "social", title: "Social Wall", description: "Beiträge der Crew", status: `${data.socialPosts?.length ?? 0} aktuell` },
+        ]
+        : [
+          { tab: "menu", title: "Getränkekarte", description: "Aktuelle Gastpreise", status: `${data.inventory.length} Getränke` },
+          { tab: "events", title: "Programm", description: "Live-Musik & Tickets", status: upcomingEvents.length > 0 ? `${upcomingEvents.length} geplant` : "Noch nichts geplant" },
+          { tab: "social", title: "Social Wall", description: "Aus der Bonanzbar", status: `${data.socialPosts?.length ?? 0} aktuell` },
         ];
   const homeIntro = isAdmin
     ? "Pflege die Basis für einen gut organisierten Barbetrieb."
     : isManager
       ? "Koordiniere alles Wichtige für den nächsten Barabend."
-      : "Halte deinen Konsum aktuell und bleib mit der Crew verbunden.";
+      : isMember
+        ? "Halte deinen Konsum aktuell und bleib mit der Crew verbunden."
+        : "Entdecke Programm, Tagesangebot und die aktuelle Getränkekarte.";
   const currentAction = homeActions.find((action) => action.tab === tab);
   const switchRole = (role: Role) => {
+    setPreviewRole(null);
     setActiveRole(role);
     setTab("overview");
     setMessage("");
+  };
+  const switchPreview = (role: Role | null) => {
+    setPreviewRole(role);
+    setActiveRole(null);
+    setTab("overview");
+    setMessage("");
+  };
+  const switchVisibleRole = (role: Role) => {
+    if (data.user.roles.includes("ADMIN") && role !== "ADMIN") {
+      switchPreview(role);
+      return;
+    }
+    switchRole(role);
   };
   const openTab = (nextTab: string) => {
     setTab(nextTab);
@@ -376,18 +423,19 @@ export function Dashboard() {
         <div className="brand-lockup"><img className="brand-logo" src="/bonanzbar-logo.png" alt="Bonanzbar" /></div>
         <div className="header-actions">
           <div className="role-switcher" role="tablist" aria-label="Bereich auswählen">
-            {data.user.roles.map((role) => <button key={role} type="button" role="tab" aria-selected={role === visibleRole} className={role === visibleRole ? "active" : ""} onClick={() => switchRole(role)}>{roleLabels[role]}</button>)}
+            {data.user.roles.map((role) => <button key={role} type="button" role="tab" aria-selected={role === visibleRole} className={role === visibleRole ? "active" : ""} onClick={() => switchVisibleRole(role)}>{roleLabels[role]}</button>)}
           </div>
           <div className="identity"><span>{data.user.name}</span><button className="text-button" onClick={() => void signOut()}>Abmelden</button></div>
         </div>
       </header>
+      {previewRole && <div className="role-preview-banner" role="status">Vorschau: {roleLabels[previewRole]} · Schreibzugriffe sind serverseitig gesperrt.</div>}
       {message && <Notice className="app-notice" message={message} onDismiss={() => setMessage("")} />}
       {tab !== "overview" && <div className="menu-context"><button type="button" className="text-button" onClick={() => openTab("overview")}>← Hauptmenü</button><span>{currentAction?.title}</span></div>}
 
       {tab === "overview" && <section className="content home-content">
         <div className="home-heading"><div><p className="eyebrow">BONANZBAR · {roleLabels[visibleRole].toUpperCase()}</p><h1>Was steht an?</h1><p>{homeIntro}</p></div><button className="secondary" onClick={() => void refresh()} disabled={loading}>{loading ? "Lädt..." : "Aktualisieren"}</button></div>
         <div className="metrics home-metrics">
-          {isMember ? <><Metric label="Verfügbare Artikel" value={String(data.inventory.length)} /><Metric label="Meine Getränke" value={String(data.consumptionSummary?.totalQuantity ?? 0)} /><Metric label="Offene Rechnung" value={formatCurrency(data.openBillTotalCents ?? 0)} accent={(data.openBillTotalCents ?? 0) > 0} /></> : isManager ? <><Metric label="Aktive Artikel" value={String(data.inventory.length)} /><Metric label="Offene Einkaufslisten" value={String(openShoppingLists.length)} accent={openShoppingLists.length > 0} onClick={() => openTab("shopping")} /><Metric label="Letzte Zählung" value={data.latestCount ? date(data.latestCount.countedAt) : "Noch nicht gezählt"} /></> : <><Metric label="Aktive Artikel" value={String(data.inventory.length)} /><Metric label="Nachbestellen" value={String(lowStock.length)} accent={lowStock.length > 0} /><Metric label="Letzte Zählung" value={data.latestCount ? date(data.latestCount.countedAt) : "Noch nicht gezählt"} /></>}
+          {isMember ? <><Metric label="Verfügbare Artikel" value={String(data.inventory.length)} /><Metric label="Meine Getränke" value={String(data.consumptionSummary?.totalQuantity ?? 0)} /><Metric label="Offene Rechnung" value={formatCurrency(data.openBillTotalCents ?? 0)} accent={(data.openBillTotalCents ?? 0) > 0} /></> : isManager ? <><Metric label="Aktive Artikel" value={String(data.inventory.length)} /><Metric label="Offene Einkaufslisten" value={String(openShoppingLists.length)} accent={openShoppingLists.length > 0} onClick={() => openTab("shopping")} /><Metric label="Letzte Zählung" value={data.latestCount ? date(data.latestCount.countedAt) : "Noch nicht gezählt"} /></> : isGuest ? <><Metric label="Getränkekarte" value={String(data.inventory.length)} /><Metric label="Nächste Veranstaltung" value={upcomingEvents[0] ? date(upcomingEvents[0].startsAt) : "Noch offen"} /><Metric label="Tagesangebot" value={data.dailySpecial ? formatCurrency(data.dailySpecial.priceCents) : "Heute keines"} /></> : <><Metric label="Aktive Artikel" value={String(data.inventory.length)} /><Metric label="Nachbestellen" value={String(lowStock.length)} accent={lowStock.length > 0} /><Metric label="Letzte Zählung" value={data.latestCount ? date(data.latestCount.countedAt) : "Noch nicht gezählt"} /></>}
         </div>
         <div className="action-menu" aria-label={`Hauptmenü ${roleLabels[visibleRole]}`}>
           {homeActions.map((action, index) => <button key={action.tab} type="button" className={`action-tile${action.tone ? ` ${action.tone}` : ""}`} onClick={() => openTab(action.tab)}>
@@ -396,25 +444,30 @@ export function Dashboard() {
             <span className="action-status">{action.status}</span>
           </button>)}
         </div>
-        {!isMember && lowStock.length > 0 && <section className="panel alert"><h2>Nachbestellung im Blick</h2>{lowStock.map((item) => <p key={item.id}>{item.name}: noch <b>{formatStockQuantity(item.onHand, item)}</b>; nachbestellen ab {formatStockQuantity(item.reorderLevel, item)}.</p>)}</section>}
+        {!isMember && !isGuest && lowStock.length > 0 && <section className="panel alert"><h2>Nachbestellung im Blick</h2>{lowStock.map((item) => <p key={item.id}>{item.name}: noch <b>{formatStockQuantity(item.onHand, item)}</b>; nachbestellen ab {formatStockQuantity(item.reorderLevel, item)}.</p>)}</section>}
       </section>}
 
-      {isAdmin && tab === "inventory" && <section className="content"><section className="two-column"><section className="panel"><h1>Inventarartikel hinzufügen</h1><form onSubmit={(event) => void submit(event, "/api/inventory", (form) => ({ name: value(form, "name"), category: value(form, "category"), unit: value(form, "unit"), packageSize: Number(value(form, "packageSize")), reorderLevel: Number(value(form, "reorderLevel")), priceCents: Math.round(Number(value(form, "publicPrice")) * 100), helperPriceCents: Math.round(Number(value(form, "helperPrice")) * 100) }))}><Field name="name" label="Name" /><Field name="category" label="Kategorie" /><Field name="unit" label="Einheit" initial="Flasche" /><Field name="packageSize" label="Gebindegröße (Einheiten je Gebinde)" type="number" initial="1" min="1" /><Field name="reorderLevel" label="Meldebestand (Einheiten)" type="number" initial="0" min="0" /><Field name="publicPrice" label="Regulärer Preis (EUR)" type="number" step="0.01" initial="0" min="0" /><Field name="helperPrice" label="Helferpreis (EUR)" type="number" step="0.01" initial="0" min="0" /><button className="primary">Artikel hinzufügen</button></form></section><EditableInventoryCatalog items={data.inventory} request={request} setMessage={setMessage} onUpdated={refresh} /></section><PendingInventoryApprovals items={data.pendingInventoryItems ?? []} request={request} setMessage={setMessage} onApproved={refresh} /></section>}
+      {isAdmin && tab === "inventory" && <section className="content"><section className="two-column"><section className="panel"><h1>Inventarartikel hinzufügen</h1><form onSubmit={(event) => void submit(event, "/api/inventory", (form) => ({ name: value(form, "name"), category: value(form, "category"), unit: value(form, "unit"), packageSize: Number(value(form, "packageSize")), reorderLevel: Number(value(form, "reorderLevel")), priceCents: Math.round(Number(value(form, "publicPrice")) * 100), helperPriceCents: Math.round(Number(value(form, "helperPrice")) * 100), guestPriceCents: Math.round(Number(value(form, "guestPrice")) * 100) }))}><Field name="name" label="Name" /><Field name="category" label="Kategorie" /><Field name="unit" label="Einheit" initial="Flasche" /><Field name="packageSize" label="Gebindegröße (Einheiten je Gebinde)" type="number" initial="1" min="1" /><Field name="reorderLevel" label="Meldebestand (Einheiten)" type="number" initial="0" min="0" /><Field name="publicPrice" label="Regulärer Preis (EUR)" type="number" step="0.01" initial="0" min="0" /><Field name="helperPrice" label="Helferpreis (EUR)" type="number" step="0.01" initial="0" min="0" /><Field name="guestPrice" label="Gastpreis (EUR)" type="number" step="0.01" initial="0" min="0" /><button className="primary">Artikel hinzufügen</button></form></section><EditableInventoryCatalog items={data.inventory} request={request} setMessage={setMessage} onUpdated={refresh} /></section><PendingInventoryApprovals items={data.pendingInventoryItems ?? []} request={request} setMessage={setMessage} onApproved={refresh} /></section>}
       {isAdmin && tab === "users" && <section className="content two-column"><section className="panel"><h1>Mitglied hinzufügen</h1><form onSubmit={(event) => void submit(event, "/api/users", (form) => ({ name: value(form, "name"), email: value(form, "email"), roles: new FormData(form).getAll("roles").map(String), priceMode: value(form, "priceMode"), password: value(form, "password") }))}><Field name="name" label="Name" /><Field name="email" label="E-Mail" type="email" autoComplete="email" /><Field name="password" label="Startpasswort (mindestens 12 Zeichen)" type="password" autoComplete="new-password" /><RoleSelection /><PriceModeSelect name="priceMode" /><button className="primary">Konto anlegen</button></form></section><EditableUserList users={data.users ?? []} currentUserId={data.user.id} request={request} setMessage={setMessage} onUpdated={refresh} /></section>}
-      {isAdmin && tab === "pricing" && <PricingAdministration settings={data.barSettings ?? { isOfficiallyOpen: false, updatedAt: "" }} users={data.users ?? []} request={request} setMessage={setMessage} onUpdated={refresh} />}
+      {isAdmin && tab === "pricing" && <><PricingAdministration settings={data.barSettings ?? { isOfficiallyOpen: false, updatedAt: "" }} users={data.users ?? []} request={request} setMessage={setMessage} onUpdated={refresh} /><DailySpecialEditor settings={data.barSettings ?? { isOfficiallyOpen: false, updatedAt: "" }} request={request} setMessage={setMessage} onUpdated={refresh} /></>}
+      {isAdmin && tab === "recaps" && <EventRecapAdministration events={data.events ?? []} recaps={data.eventRecaps ?? []} request={request} setMessage={setMessage} onUpdated={refresh} />}
+      {isAdmin && tab === "ledgers" && <EventLedgerAdministration events={data.events ?? []} ledgers={data.eventLedgers ?? []} request={request} setMessage={setMessage} onUpdated={refresh} />}
       {isAdmin && tab === "reset" && <ResetDataPanel request={request} setMessage={setMessage} onReset={refresh} />}
 
       {isManager && tab === "count" && <section className="content"><section className="panel"><h1>Bestandszählung abschließen</h1><p className="muted">Zähle volle Gebinde und einzelne Reste. Die App speichert daraus die Gesamtmenge in Einheiten als unveränderbare Grundlage für Auswertungen.</p><form onSubmit={(event) => void submit(event, "/api/counts", (form) => ({ label: value(form, "label"), notes: value(form, "notes"), lines: data.inventory.map((item) => { const count = countValues[item.id] ?? { packages: 0, units: 0 }; return { itemId: item.id, quantity: count.packages * item.packageSize + count.units }; }) }))}><Field name="label" label="Name der Zählung" initial={`Zählung ${new Date().toLocaleDateString("de-DE")}`} /><label>Notizen<textarea name="notes" rows={2} /></label><div className="count-grid">{data.inventory.map((item) => { const count = countValues[item.id] ?? { packages: 0, units: 0 }; return <div className="count-item" key={item.id}><b>{item.name}</b><small>{item.packageSize === 1 ? "Wird einzeln gezählt" : `${item.packageSize} ${item.unit} je Gebinde`}</small><div className="count-inputs">{item.packageSize > 1 && <label>Volle Gebinde<input type="number" min="0" value={count.packages} onChange={(event) => updateCountValue(item, { packages: Number(event.target.value) })} /></label>}<label>{item.packageSize > 1 ? `Einzelne ${item.unit}` : item.unit}<input type="number" min="0" max={item.packageSize > 1 ? item.packageSize - 1 : undefined} value={count.units} onChange={(event) => updateCountValue(item, { units: Number(event.target.value) })} /></label></div><small>Gesamt: {formatStockQuantity(count.packages * item.packageSize + count.units, item)}</small></div>; })}</div><button className="primary">Zählung abschließen</button></form></section></section>}
-      {isManager && tab === "events" && <EventManagement events={data.events ?? []} request={request} setMessage={setMessage} onUpdated={refresh} />}
+      {canManageOps && tab === "events" && <EventManagement events={data.events ?? []} request={request} setMessage={setMessage} onUpdated={refresh} />}
       {isManager && tab === "notes" && <NotesBoard notes={data.notes ?? []} events={data.events ?? []} canManage request={request} setMessage={setMessage} onUpdated={refresh} />}
       {isManager && tab === "shopping" && <section className="content two-column"><section className="panel"><h1>Einkaufsliste erstellen</h1><form onSubmit={(event) => void submit(event, "/api/shopping-lists", (form) => { const itemId = value(form, "itemId"); const item = data.inventory.find((candidate) => candidate.id === itemId); return { title: value(form, "title"), items: [shoppingSource === "inventory" ? { itemId, name: item?.name ?? "", quantity: Number(value(form, "quantity")) } : { name: value(form, "newItemName"), quantity: Number(value(form, "quantity")) }] }; })}><Field name="title" label="Name der Liste" initial="Neue Nachbestellung" /><fieldset className="shopping-source"><legend>Artikelquelle</legend><label><input type="radio" checked={shoppingSource === "inventory"} onChange={() => setShoppingSource("inventory")} />Aus Inventar auswählen</label><label><input type="radio" checked={shoppingSource === "new"} onChange={() => setShoppingSource("new")} />Neuen Artikel eingeben</label></fieldset>{shoppingSource === "inventory" ? <label>Inventarartikel<select name="itemId">{data.inventory.map((item) => <option value={item.id} key={item.id}>{item.name}</option>)}</select></label> : <><Field name="newItemName" label="Neuer Artikel" /><p className="muted">Der Artikel erscheint erst nach Freigabe durch die Administration in der Inventur.</p></>}<Field name="quantity" label="Menge" type="number" initial="1" /><button className="primary">Liste erstellen</button></form></section><ShoppingLists lists={data.shoppingLists ?? []} request={request} setMessage={setMessage} onUpdated={refresh} /></section>}
       {isManager && tab === "bills" && <section className="content two-column"><section className="panel"><h1>Rechnung erstellen</h1><form onSubmit={(event) => void submit(event, "/api/bills", (form) => ({ recipientId: value(form, "recipientId"), dueAt: new Date(`${value(form, "dueDate")}T12:00:00.000Z`).toISOString(), lines: [{ itemId: value(form, "itemId"), quantity: Number(value(form, "quantity")) }] }))}><label>Mitglied<select name="recipientId">{(data.billRecipients ?? []).map((user) => <option key={user.id} value={user.id}>{user.name}</option>)}</select></label><label>Artikel<select name="itemId">{data.inventory.map((item) => <option value={item.id} key={item.id}>{item.name} — regulär {formatCurrency(item.priceCents)}, Helfer {formatCurrency(item.helperPriceCents)}</option>)}</select></label><p className="muted">Der Rechnungspreis wird beim Erstellen anhand der Preisregel des Mitglieds und des aktuellen Betriebsmodus festgelegt.</p><Field name="quantity" label="Menge" type="number" initial="1" /><Field name="dueDate" label="Fällig am" type="date" initial={new Date(Date.now() + 12096e5).toISOString().slice(0, 10)} /><button className="primary">Rechnung ausstellen</button></form></section><section className="panel"><h2>Letzte Rechnungen</h2>{(data.bills ?? []).map((bill) => <div className="row" key={bill.id}><span><b>{bill.recipient.name}</b><small>{bill.lines.map((line) => `${line.quantity}× ${line.description}`).join(", ")}</small></span><b>{formatCurrency(bill.totalCents)}</b></div>)}</section></section>}
       {isManager && tab === "allocations" && <CostAllocationPanel recipients={data.billRecipients ?? []} allocations={data.allocations ?? []} request={request} setMessage={setMessage} onUpdated={refresh} />}
       {isManager && tab === "corrections" && <CorrectionInbox corrections={data.correctionRequests ?? []} request={request} setMessage={setMessage} onUpdated={refresh} />}
       {isManager && tab === "reports" && <SalesReport counts={data.counts ?? []} request={request} setMessage={setMessage} />}
-      {isMember && tab === "events" && <EventBoard events={data.events ?? []} request={request} setMessage={setMessage} onUpdated={refresh} />}
+      {isManager && tab === "tasks" && <HandoverTaskBoard tasks={data.handoverTasks ?? []} assignees={data.billRecipients ?? []} request={request} setMessage={setMessage} onUpdated={refresh} />}
+      {!canManageOps && (isMember || isGuest) && tab === "events" && <EventBoard events={data.events ?? []} request={request} setMessage={setMessage} onUpdated={refresh} canApply={!isGuest} />}
       {isMember && tab === "notes" && <NotesBoard notes={data.notes ?? []} events={data.events ?? []} canManage={false} request={request} setMessage={setMessage} onUpdated={refresh} />}
-      {isMember && tab === "consume" && <section className="content"><section className="panel"><h1>Getränk eintragen</h1><p className="muted">Der Eintrag wird deinem Konto zugeordnet und kann in die nächste Rechnung übernommen werden.</p><form onSubmit={(event) => void submit(event, "/api/consumptions", (form) => ({ itemId: value(form, "itemId"), quantity: Number(value(form, "quantity")) }))}><label>Was hattest du?<select name="itemId">{data.inventory.map((item) => <option value={item.id} key={item.id}>{item.name} — {formatCurrency(item.effectivePriceCents)}</option>)}</select></label><Field name="quantity" label="Menge" type="number" initial="1" /><button className="primary">Zu meinem Konto hinzufügen</button></form></section><CorrectionRequestPanel consumptions={data.correctionCandidates ?? []} corrections={data.correctionRequests ?? []} request={request} setMessage={setMessage} onUpdated={refresh} /></section>}
+      {tab === "social" && <SocialWall posts={data.socialPosts ?? []} currentUserId={data.user.id} canWrite={!isGuest} isAdmin={isAdmin} request={request} setMessage={setMessage} onUpdated={refresh} />}
+      {isGuest && tab === "menu" && <section className="content two-column"><section className="panel"><h1>Getränkekarte</h1><p className="muted">Aktive Getränke und aktuelle Gastpreise.</p><GuestDrinkMenu items={data.inventory} /></section><section className="panel"><h2>Tagesangebot</h2>{data.dailySpecial ? <><b>{data.dailySpecial.title}</b><p>{data.dailySpecial.description}</p><strong className="guest-special-price">{formatCurrency(data.dailySpecial.priceCents)}</strong></> : <p className="muted">Heute gibt es kein aktives Tagesangebot.</p>}</section></section>}
+      {isMember && tab === "consume" && <section className="content"><section className="panel"><h1>Getränk eintragen</h1><p className="muted">Der Eintrag wird deinem Konto zugeordnet und kann in die nächste Rechnung übernommen werden.</p><form onSubmit={(event) => void submit(event, "/api/consumptions", (form) => ({ itemId: value(form, "itemId"), quantity: Number(value(form, "quantity")) }))}><label>Was hattest du?<select name="itemId">{data.inventory.map((item) => <option value={item.id} key={item.id}>{item.name} — {formatCurrency(item.effectivePriceCents)}</option>)}</select></label><Field name="quantity" label="Menge" type="number" initial="1" /><button className="primary">Zu meinem Konto hinzufügen</button></form></section><RecentConsumptions consumptions={data.recentConsumptions ?? []} request={request} setMessage={setMessage} onUpdated={refresh} /><CorrectionRequestPanel consumptions={data.correctionCandidates ?? []} corrections={data.correctionRequests ?? []} request={request} setMessage={setMessage} onUpdated={refresh} /></section>}
     </main>
   );
 }
@@ -466,6 +519,7 @@ function RoleOverviewBanner({ role, lowStock }: { role: Role; lowStock: number }
       : { eyebrow: "MITGLIEDERBEREICH", title: "Schön, dass du da bist.", text: "Sieh nach, was da ist, halte deinen Konsum aktuell und trage dich für den nächsten Einsatz ein.", action: "Deinen Beitrag zur Crew leisten" };
   return <section className="role-overview"><div><p className="eyebrow">{content.eyebrow}</p><h2>{content.title}</h2><p>{content.text}</p></div><span>{content.action}</span></section>;
 }
+function GuestDrinkMenu({ items }: { items: Array<Pick<Item, "id" | "name" | "category" | "effectivePriceCents">> }) { return <div className="table guest-drink-menu">{items.map((item) => <div className="table-row" key={item.id}><span><b>{item.name}</b><small>{item.category}</small></span><strong>{formatCurrency(item.effectivePriceCents)}</strong></div>)}</div>; }
 function InventoryTable({ items, onDeactivate }: { items: Item[]; onDeactivate?: (item: Item) => void }) { return <div className="table">{items.map((item) => <div className="table-row" key={item.id}><span><b>{item.name}</b><small>{item.category} · {formatCurrency(item.effectivePriceCents)} · {item.packageSize} {item.unit} je Gebinde</small></span><span className={item.onHand <= item.reorderLevel ? "low" : ""}>{formatStockQuantity(item.onHand, item)}<small>Meldebestand: {formatStockQuantity(item.reorderLevel, item)}</small>{onDeactivate && <button className="text-button inline-action" onClick={() => onDeactivate(item)}>Ausmustern</button>}</span></div>)}</div>; }
 function PricingAdministration({ settings, users, request, setMessage, onUpdated }: { settings: { isOfficiallyOpen: boolean; updatedAt: string }; users: User[]; request: (path: string, init?: RequestInit) => Promise<unknown>; setMessage: (value: string) => void; onUpdated: () => Promise<void> }) {
   const updateServiceMode = async (isOfficiallyOpen: boolean) => {
@@ -582,6 +636,11 @@ function EventManagement({ events, request, setMessage, onUpdated }: { events: B
           title: value(form, "title"),
           description: value(form, "description"),
           location: value(form, "location"),
+          ...(value(form, "bandInfo") ? { bandInfo: value(form, "bandInfo") } : {}),
+          ...(value(form, "bandHomepageUrl") ? { bandHomepageUrl: value(form, "bandHomepageUrl") } : {}),
+          ...(value(form, "ticketUrl") ? { ticketUrl: value(form, "ticketUrl") } : {}),
+          ...(value(form, "youtubeUrl") ? { youtubeUrl: value(form, "youtubeUrl") } : {}),
+          bandImageUrls: value(form, "bandImageUrls").split(/\r?\n/).map((url) => url.trim()).filter(Boolean),
           startsAt: startsAt.toISOString(),
           ...(endsValue ? { endsAt: new Date(endsValue).toISOString() } : {}),
           status: value(form, "status"),
@@ -615,6 +674,11 @@ function EventManagement({ events, request, setMessage, onUpdated }: { events: B
           title: value(form, "title"),
           description: value(form, "description") || null,
           location: value(form, "location") || null,
+          bandInfo: value(form, "bandInfo") || null,
+          bandHomepageUrl: value(form, "bandHomepageUrl") || null,
+          ticketUrl: value(form, "ticketUrl") || null,
+          youtubeUrl: value(form, "youtubeUrl") || null,
+          bandImageUrls: value(form, "bandImageUrls").split(/\r?\n/).map((url) => url.trim()).filter(Boolean),
           startsAt: new Date(value(form, "startsAt")).toISOString(),
           endsAt: endsAt ? new Date(endsAt).toISOString() : null,
           status: value(form, "status"),
@@ -636,9 +700,9 @@ function EventManagement({ events, request, setMessage, onUpdated }: { events: B
       setMessage(error instanceof Error ? error.message : "Dienstbewerbung konnte nicht aktualisiert werden.");
     }
   };
-  return <section className="content two-column"><section className="panel"><h1>Veranstaltung anlegen</h1><form onSubmit={(event) => void create(event)}><Field name="title" label="Titel" /><div className="approval-fields"><Field name="startsAt" label="Beginn" type="datetime-local" initial={new Date(Date.now() + 6048e5).toISOString().slice(0, 16)} /><Field name="endsAt" label="Ende (optional)" type="datetime-local" required={false} /><Field name="location" label="Ort (optional)" required={false} /></div><label>Beschreibung<textarea name="description" rows={3} /></label><label>Status<select name="status" defaultValue="DRAFT"><option value="DRAFT">Entwurf</option><option value="PUBLISHED">Veröffentlicht</option></select></label><label>Dienste und Sollbesetzung<textarea name="duties" rows={5} defaultValue={"Theke;2\nEintritt;1\nJoker;1"} /><small>Ein Dienst je Zeile im Format „Bezeichnung; Anzahl“.</small></label><button className="primary">Veranstaltung speichern</button></form></section><section className="panel"><h2>Veranstaltungen verwalten</h2>{events.length === 0 ? <p className="muted">Noch keine Veranstaltung geplant.</p> : <div className="event-list">{events.map((event) => <article className="event-card" key={event.id}>{editingId === event.id ? <form className="event-edit-form" onSubmit={(submitEvent) => void updateEvent(submitEvent, event)}><div className="edit-heading"><b>{event.title} bearbeiten</b><button type="button" className="text-button" onClick={() => setEditingId(null)}>Abbrechen</button></div><div className="approval-fields"><Field name="title" label="Titel" initial={event.title} /><Field name="startsAt" label="Beginn" type="datetime-local" initial={dateTimeInput(event.startsAt)} /><Field name="endsAt" label="Ende (optional)" type="datetime-local" initial={event.endsAt ? dateTimeInput(event.endsAt) : undefined} required={false} /><Field name="location" label="Ort (optional)" initial={event.location ?? undefined} required={false} /></div><label>Beschreibung<textarea name="description" rows={3} defaultValue={event.description ?? ""} /></label><label>Status<select name="status" defaultValue={event.status}><option value="DRAFT">Entwurf</option><option value="PUBLISHED">Veröffentlicht</option><option value="CANCELLED">Abgesagt</option></select></label><button className="primary">Änderungen speichern</button></form> : <><EventHeader event={event} /><div className="event-actions"><button type="button" className="text-button" onClick={() => setEditingId(event.id)}>Bearbeiten</button>{event.status !== "PUBLISHED" && <button type="button" className="secondary" onClick={() => void updateStatus(event, "PUBLISHED")}>Veröffentlichen</button>}{event.status !== "DRAFT" && <button type="button" className="text-button" onClick={() => void updateStatus(event, "DRAFT")}>Als Entwurf</button>}{event.status !== "CANCELLED" && <button type="button" className="text-button danger-action" onClick={() => void updateStatus(event, "CANCELLED")}>Absagen</button>}</div><div className="duty-list">{event.duties.map((duty) => { const confirmed = duty.applications.filter((application) => application.status === "CONFIRMED").length; return <section className="duty-card" key={duty.id}><div><b>{duty.label}</b><small>{confirmed} von {duty.slots} bestätigt</small></div>{duty.applications.length === 0 ? <small className="muted">Noch keine Bewerbungen.</small> : <div className="application-list">{duty.applications.map((application) => <div className="application-row" key={application.id}><span><b>{application.user?.name ?? "Mitglied"}</b><small>{application.note || application.user?.email}</small></span><span className="application-actions"><span className={`application-status ${application.status.toLocaleLowerCase("en-US")}`}>{applicationStatusLabels[application.status]}</span>{application.status !== "CONFIRMED" && <button type="button" className="text-button" onClick={() => void updateApplication(event, application, "CONFIRMED")}>Bestätigen</button>}{application.status !== "DECLINED" && <button type="button" className="text-button danger-action" onClick={() => void updateApplication(event, application, "DECLINED")}>Ablehnen</button>}</span></div>)}</div>}</section>; })}</div></>}</article>)}</div>}</section></section>;
+  return <section className="content two-column"><section className="panel"><h1>Veranstaltung anlegen</h1><form onSubmit={(event) => void create(event)}><Field name="title" label="Titel" /><div className="approval-fields"><Field name="startsAt" label="Beginn" type="datetime-local" initial={new Date(Date.now() + 6048e5).toISOString().slice(0, 16)} /><Field name="endsAt" label="Ende (optional)" type="datetime-local" required={false} /><Field name="location" label="Ort (optional)" required={false} /></div><label>Beschreibung<textarea name="description" rows={3} /></label><label>Bandinfos<textarea name="bandInfo" rows={3} /></label><div className="approval-fields"><Field name="bandHomepageUrl" label="Band-Homepage (URL)" type="url" required={false} /><Field name="ticketUrl" label="Ticket-Link (URL)" type="url" required={false} /><Field name="youtubeUrl" label="YouTube-Link (URL)" type="url" required={false} /></div><label>Bandbild-URLs (maximal 4, eine URL je Zeile)<textarea name="bandImageUrls" rows={3} /></label><label>Status<select name="status" defaultValue="DRAFT"><option value="DRAFT">Entwurf</option><option value="PUBLISHED">Veröffentlicht</option></select></label><label>Dienste und Sollbesetzung<textarea name="duties" rows={5} defaultValue={"Theke;2\nEintritt;1\nJoker;1"} /><small>Ein Dienst je Zeile im Format „Bezeichnung; Anzahl“.</small></label><button className="primary">Veranstaltung speichern</button></form></section><section className="panel"><h2>Veranstaltungen verwalten</h2>{events.length === 0 ? <p className="muted">Noch keine Veranstaltung geplant.</p> : <div className="event-list">{events.map((event) => <article className="event-card" key={event.id}>{editingId === event.id ? <form className="event-edit-form" onSubmit={(submitEvent) => void updateEvent(submitEvent, event)}><div className="edit-heading"><b>{event.title} bearbeiten</b><button type="button" className="text-button" onClick={() => setEditingId(null)}>Abbrechen</button></div><div className="approval-fields"><Field name="title" label="Titel" initial={event.title} /><Field name="startsAt" label="Beginn" type="datetime-local" initial={dateTimeInput(event.startsAt)} /><Field name="endsAt" label="Ende (optional)" type="datetime-local" initial={event.endsAt ? dateTimeInput(event.endsAt) : undefined} required={false} /><Field name="location" label="Ort (optional)" initial={event.location ?? undefined} required={false} /></div><label>Beschreibung<textarea name="description" rows={3} defaultValue={event.description ?? ""} /></label><label>Bandinfos<textarea name="bandInfo" rows={3} defaultValue={event.bandInfo ?? ""} /></label><div className="approval-fields"><Field name="bandHomepageUrl" label="Band-Homepage (URL)" type="url" initial={event.bandHomepageUrl ?? undefined} required={false} /><Field name="ticketUrl" label="Ticket-Link (URL)" type="url" initial={event.ticketUrl ?? undefined} required={false} /><Field name="youtubeUrl" label="YouTube-Link (URL)" type="url" initial={event.youtubeUrl ?? undefined} required={false} /></div><label>Bandbild-URLs (maximal 4, eine URL je Zeile)<textarea name="bandImageUrls" rows={3} defaultValue={event.bandImageUrls.join("\n")} /></label><label>Status<select name="status" defaultValue={event.status}><option value="DRAFT">Entwurf</option><option value="PUBLISHED">Veröffentlicht</option><option value="CANCELLED">Abgesagt</option></select></label><button className="primary">Änderungen speichern</button></form> : <><EventHeader event={event} /><div className="event-actions"><button type="button" className="text-button" onClick={() => setEditingId(event.id)}>Bearbeiten</button>{event.status !== "PUBLISHED" && <button type="button" className="secondary" onClick={() => void updateStatus(event, "PUBLISHED")}>Veröffentlichen</button>}{event.status !== "DRAFT" && <button type="button" className="text-button" onClick={() => void updateStatus(event, "DRAFT")}>Als Entwurf</button>}{event.status !== "CANCELLED" && <button type="button" className="text-button danger-action" onClick={() => void updateStatus(event, "CANCELLED")}>Absagen</button>}</div><div className="duty-list">{event.duties.map((duty) => { const confirmed = duty.applications.filter((application) => application.status === "CONFIRMED").length; return <section className="duty-card" key={duty.id}><div><b>{duty.label}</b><small>{confirmed} von {duty.slots} bestätigt</small></div>{duty.applications.length === 0 ? <small className="muted">Noch keine Bewerbungen.</small> : <div className="application-list">{duty.applications.map((application) => <div className="application-row" key={application.id}><span><b>{application.user?.name ?? "Mitglied"}</b><small>{application.note || application.user?.email}</small></span><span className="application-actions"><span className={`application-status ${application.status.toLocaleLowerCase("en-US")}`}>{applicationStatusLabels[application.status]}</span>{application.status !== "CONFIRMED" && <button type="button" className="text-button" onClick={() => void updateApplication(event, application, "CONFIRMED")}>Bestätigen</button>}{application.status !== "DECLINED" && <button type="button" className="text-button danger-action" onClick={() => void updateApplication(event, application, "DECLINED")}>Ablehnen</button>}</span></div>)}</div>}</section>; })}</div></>}</article>)}</div>}</section></section>;
 }
-function EventBoard({ events, request, setMessage, onUpdated }: { events: BarEvent[]; request: (path: string, init?: RequestInit) => Promise<unknown>; setMessage: (value: string) => void; onUpdated: () => Promise<void> }) {
+function EventBoard({ events, request, setMessage, onUpdated, canApply }: { events: BarEvent[]; request: (path: string, init?: RequestInit) => Promise<unknown>; setMessage: (value: string) => void; onUpdated: () => Promise<void>; canApply: boolean }) {
   const apply = async (event: BarEvent, duty: EventDuty) => {
     try {
       await request(`/api/events/${event.id}/applications`, { method: "POST", body: JSON.stringify({ dutyId: duty.id }) });
@@ -658,9 +722,9 @@ function EventBoard({ events, request, setMessage, onUpdated }: { events: BarEve
     }
   };
   const upcoming = events.filter((event) => new Date(event.startsAt) >= new Date());
-  return <section className="content"><section className="panel"><h1>Veranstaltungen</h1><p className="muted">Hier findest du veröffentlichte Termine und kannst dich für freie Dienste eintragen.</p>{upcoming.length === 0 ? <p className="muted">Zurzeit sind keine zukünftigen Veranstaltungen veröffentlicht.</p> : <div className="event-list">{upcoming.map((event) => <article className="event-card" key={event.id}><EventHeader event={event} /><div className="duty-list">{event.duties.map((duty) => { const application = duty.applications[0]; return <section className="duty-card" key={duty.id}><div><b>{duty.label}</b><small>{duty.slots} benötigte Person{duty.slots === 1 ? "" : "en"}</small></div>{application ? <span className="application-actions"><span className={`application-status ${application.status.toLocaleLowerCase("en-US")}`}>{applicationStatusLabels[application.status]}</span>{application.status === "APPLIED" && <button type="button" className="text-button danger-action" onClick={() => void withdraw(event, application)}>Zurückziehen</button>}</span> : <button type="button" className="secondary" onClick={() => void apply(event, duty)}>Bewerben</button>}</section>; })}</div></article>)}</div>}</section></section>;
+  return <section className="content"><section className="panel"><h1>Veranstaltungen</h1><p className="muted">{canApply ? "Hier findest du veröffentlichte Termine und kannst dich für freie Dienste eintragen." : "Hier findest du veröffentlichte Termine, Bandinfos und Tickets."}</p>{upcoming.length === 0 ? <p className="muted">Zurzeit sind keine zukünftigen Veranstaltungen veröffentlicht.</p> : <div className="event-list">{upcoming.map((event) => <article className="event-card" key={event.id}><EventHeader event={event} />{canApply && <div className="duty-list">{event.duties.map((duty) => { const application = duty.applications[0]; return <section className="duty-card" key={duty.id}><div><b>{duty.label}</b><small>{duty.slots} benötigte Person{duty.slots === 1 ? "" : "en"}</small></div>{application ? <span className="application-actions"><span className={`application-status ${application.status.toLocaleLowerCase("en-US")}`}>{applicationStatusLabels[application.status]}</span>{application.status === "APPLIED" && <button type="button" className="text-button danger-action" onClick={() => void withdraw(event, application)}>Zurückziehen</button>}</span> : <button type="button" className="secondary" onClick={() => void apply(event, duty)}>Bewerben</button>}</section>; })}</div>}</article>)}</div>}</section></section>;
 }
-function EventHeader({ event }: { event: BarEvent }) { return <div className="event-heading"><div><h3>{event.title}</h3><small>{dateTime(event.startsAt)}{event.endsAt ? ` – ${dateTime(event.endsAt)}` : ""}{event.location ? ` · ${event.location}` : ""}</small></div><span className={`event-status ${event.status.toLocaleLowerCase("en-US")}`}>{event.status === "PUBLISHED" ? "Veröffentlicht" : event.status === "CANCELLED" ? "Abgesagt" : "Entwurf"}</span>{event.description && <p>{event.description}</p>}</div>; }
+function EventHeader({ event }: { event: BarEvent }) { return <div className="event-heading"><div><h3>{event.title}</h3><small>{dateTime(event.startsAt)}{event.endsAt ? ` – ${dateTime(event.endsAt)}` : ""}{event.location ? ` · ${event.location}` : ""}</small></div><span className={`event-status ${event.status.toLocaleLowerCase("en-US")}`}>{event.status === "PUBLISHED" ? "Veröffentlicht" : event.status === "CANCELLED" ? "Abgesagt" : "Entwurf"}</span>{event.description && <p>{event.description}</p>}{event.bandInfo && <p>{event.bandInfo}</p>}{(event.bandHomepageUrl || event.youtubeUrl || event.ticketUrl) && <div className="event-links">{event.bandHomepageUrl && <a href={event.bandHomepageUrl} target="_blank" rel="noreferrer">Band-Homepage ↗</a>}{event.youtubeUrl && <a href={event.youtubeUrl} target="_blank" rel="noreferrer">Video ↗</a>}{event.ticketUrl && <a href={event.ticketUrl} target="_blank" rel="noreferrer">Tickets ↗</a>}</div>}</div>; }
 function NotesBoard({ notes, events, canManage, request, setMessage, onUpdated }: { notes: BulletinNote[]; events: BarEvent[]; canManage: boolean; request: (path: string, init?: RequestInit) => Promise<unknown>; setMessage: (value: string) => void; onUpdated: () => Promise<void> }) {
   const create = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -720,6 +784,7 @@ function EditableInventoryCatalog({ items, request, setMessage, onUpdated }: { i
           reorderLevel: Number(value(form, "reorderLevel")),
           priceCents: Math.round(Number(value(form, "publicPrice")) * 100),
           helperPriceCents: Math.round(Number(value(form, "helperPrice")) * 100),
+          guestPriceCents: Math.round(Number(value(form, "guestPrice")) * 100),
         }),
       });
       setEditingId(null);
@@ -739,7 +804,7 @@ function EditableInventoryCatalog({ items, request, setMessage, onUpdated }: { i
     }
   };
 
-  return <section className="panel"><h2>Aktueller Katalog</h2><p className="muted">Artikel lassen sich direkt bearbeiten. Änderungen gelten für künftige Zählungen und Rechnungen.</p><div className="editable-inventory">{items.map((item) => editingId === item.id ? <form className="inventory-edit-form" key={item.id} onSubmit={(event) => void update(event, item)}><div className="edit-heading"><b>{item.name} bearbeiten</b><button type="button" className="text-button" onClick={() => setEditingId(null)}>Abbrechen</button></div><div className="approval-fields"><Field name="name" label="Name" initial={item.name} /><Field name="category" label="Kategorie" initial={item.category} /><Field name="unit" label="Einheit" initial={item.unit} /><Field name="packageSize" label="Gebindegröße (Einheiten je Gebinde)" type="number" initial={String(item.packageSize)} min="1" /><Field name="reorderLevel" label="Meldebestand (Einheiten)" type="number" initial={String(item.reorderLevel)} min="0" /><Field name="publicPrice" label="Regulärer Preis (EUR)" type="number" step="0.01" initial={(item.priceCents / 100).toFixed(2)} min="0" /><Field name="helperPrice" label="Helferpreis (EUR)" type="number" step="0.01" initial={(item.helperPriceCents / 100).toFixed(2)} min="0" /></div><button className="primary">Änderungen speichern</button></form> : <div className="editable-inventory-row" key={item.id}><span><b>{item.name}</b><small>{item.category} · {item.packageSize} {item.unit} je Gebinde · Meldebestand: {formatStockQuantity(item.reorderLevel, item)}</small></span><span className="catalog-actions"><b>Regulär: {formatCurrency(item.priceCents)}</b><small>Helfer: {formatCurrency(item.helperPriceCents)}</small><button type="button" className="text-button" onClick={() => setEditingId(item.id)}>Bearbeiten</button><button type="button" className="text-button danger-action" onClick={() => void retire(item)}>Ausmustern</button></span></div>)}</div></section>;
+  return <section className="panel"><h2>Aktueller Katalog</h2><p className="muted">Artikel lassen sich direkt bearbeiten. Änderungen gelten für künftige Zählungen und Rechnungen.</p><div className="editable-inventory">{items.map((item) => editingId === item.id ? <form className="inventory-edit-form" key={item.id} onSubmit={(event) => void update(event, item)}><div className="edit-heading"><b>{item.name} bearbeiten</b><button type="button" className="text-button" onClick={() => setEditingId(null)}>Abbrechen</button></div><div className="approval-fields"><Field name="name" label="Name" initial={item.name} /><Field name="category" label="Kategorie" initial={item.category} /><Field name="unit" label="Einheit" initial={item.unit} /><Field name="packageSize" label="Gebindegröße (Einheiten je Gebinde)" type="number" initial={String(item.packageSize)} min="1" /><Field name="reorderLevel" label="Meldebestand (Einheiten)" type="number" initial={String(item.reorderLevel)} min="0" /><Field name="publicPrice" label="Regulärer Preis (EUR)" type="number" step="0.01" initial={(item.priceCents / 100).toFixed(2)} min="0" /><Field name="helperPrice" label="Helferpreis (EUR)" type="number" step="0.01" initial={(item.helperPriceCents / 100).toFixed(2)} min="0" /><Field name="guestPrice" label="Gastpreis (EUR)" type="number" step="0.01" initial={(item.guestPriceCents / 100).toFixed(2)} min="0" /></div><button className="primary">Änderungen speichern</button></form> : <div className="editable-inventory-row" key={item.id}><span><b>{item.name}</b><small>{item.category} · {item.packageSize} {item.unit} je Gebinde · Meldebestand: {formatStockQuantity(item.reorderLevel, item)}</small></span><span className="catalog-actions"><b>Regulär: {formatCurrency(item.priceCents)}</b><small>Helfer: {formatCurrency(item.helperPriceCents)}</small><small>Gast: {formatCurrency(item.guestPriceCents)}</small><button type="button" className="text-button" onClick={() => setEditingId(item.id)}>Bearbeiten</button><button type="button" className="text-button danger-action" onClick={() => void retire(item)}>Ausmustern</button></span></div>)}</div></section>;
 }
 function PendingInventoryApprovals({ items, request, setMessage, onApproved }: { items: PendingInventoryItem[]; request: (path: string, init?: RequestInit) => Promise<unknown>; setMessage: (value: string) => void; onApproved: () => Promise<void> }) {
   const saveDraft = async (event: FormEvent<HTMLFormElement>, shoppingItemId: string) => {
@@ -804,7 +869,26 @@ function ShoppingLists({ lists, request, setMessage, onUpdated }: { lists: Shopp
   return <section className="panel"><h2>Offene Listen</h2>{openLists.length === 0 ? <p className="muted">Zurzeit gibt es keine offenen Einkaufslisten.</p> : <><div className="shopping-list-tabs">{openLists.map((list) => <button type="button" className={selected?.id === list.id ? "selected" : ""} onClick={() => setSelectedId(list.id)} key={list.id}>{list.title}<small>{list.items.filter((item) => !item.purchased).length} offen</small></button>)}</div>{selected && <div className="shopping-list-detail"><div className="list-detail-heading"><div><h3>{selected.title}</h3><p className="muted">{selected.items.filter((item) => item.purchased).length} von {selected.items.length} Positionen eingekauft</p></div><button type="button" className="primary" onClick={() => void completeList()}>Alles eingekauft</button></div><div className="shopping-items">{selected.items.map((item) => <label className={`shopping-item ${item.purchased ? "purchased" : ""}`} key={item.id}><input type="checkbox" checked={item.purchased} onChange={() => void changeItem(item)} /><span><b>{item.quantity}× {item.name}</b><small>{item.purchased ? "Eingekauft" : "Noch offen"}{!item.itemId ? " · Neuer Artikel, noch nicht für Inventur freigegeben" : ""}</small></span></label>)}</div></div>}</>}</section>;
 }
 function ManagerOverview({ data }: { data: Bootstrap }) { return <section className="split"><section className="panel"><h2>Offene Einkäufe</h2>{(data.shoppingLists ?? []).slice(0, 3).map((list) => <p key={list.id}><b>{list.title}</b><br /><span className="muted">{list.items.map((item) => `${item.quantity}× ${item.name}`).join(", ")}</span></p>)}</section><section className="panel"><h2>Offene Rechnungen</h2>{(data.bills ?? []).slice(0, 3).map((bill) => <p key={bill.id}><b>{bill.recipient.name}</b><br /><span className="muted">{formatCurrency(bill.totalCents)} · {bill.status === "OPEN" ? "offen" : "bezahlt"}</span></p>)}</section></section>; }
-function RecentConsumptions({ consumptions }: { consumptions: Consumption[] }) { return <section className="panel"><h2>Meine letzten Einträge</h2>{consumptions.length ? consumptions.map((entry) => <div className="row" key={entry.id}><span>{entry.quantity}× {entry.item.name}<small>{date(entry.occurredAt)}{entry.voidedAt ? " · Storniert" : ""}</small></span><b className={entry.voidedAt ? "muted" : ""}>{formatCurrency(entry.quantity * entry.unitCents)}</b></div>) : <p className="muted">Noch keine Getränke eingetragen.</p>}</section>; }
+function RecentConsumptions({ consumptions, request, setMessage, onUpdated }: { consumptions: Consumption[]; request: (path: string, init?: RequestInit) => Promise<unknown>; setMessage: (value: string) => void; onUpdated: () => Promise<void> }) {
+  const [now, setNow] = useState(Date.now());
+  useEffect(() => {
+    const interval = window.setInterval(() => setNow(Date.now()), 1_000);
+    return () => window.clearInterval(interval);
+  }, []);
+  const undo = async (entry: Consumption) => {
+    try {
+      await request(`/api/consumptions/${entry.id}`, { method: "DELETE" });
+      setMessage("Getränkestrich zurückgenommen.");
+      await onUpdated();
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Getränkestrich konnte nicht zurückgenommen werden.");
+    }
+  };
+  return <section className="panel"><h2>Meine letzten Einträge</h2>{consumptions.length ? consumptions.map((entry) => {
+    const remainingSeconds = Math.max(0, Math.ceil((new Date(entry.occurredAt).getTime() + 10_000 - now) / 1000));
+    return <div className="row" key={entry.id}><span>{entry.quantity}× {entry.item.name}<small>{date(entry.occurredAt)}{entry.voidedAt ? " · Storniert" : ""}{!entry.voidedAt && remainingSeconds > 0 ? ` · noch ${remainingSeconds}s rücknehmbar` : ""}</small></span><span className="consumption-actions"><b className={entry.voidedAt ? "muted" : ""}>{formatCurrency(entry.quantity * entry.unitCents)}</b>{!entry.voidedAt && remainingSeconds > 0 && <button type="button" className="text-button danger-action" onClick={() => void undo(entry)}>Rückgängig</button>}</span></div>;
+  }) : <p className="muted">Noch keine Getränke eingetragen.</p>}</section>;
+}
 function SalesReport({ counts, request, setMessage }: { counts: Count[]; request: (path: string, init?: RequestInit) => Promise<unknown>; setMessage: (value: string) => void }) {
   const [report, setReport] = useState<{ sold: { name: string; quantity: number; unit: string; revenueCents: number }[]; totalRevenueCents: number; methodology: string } | null>(null);
   const run = async (event: FormEvent<HTMLFormElement>) => { event.preventDefault(); const form = event.currentTarget; try { const body = await request(`/api/reports/sold?fromCountId=${value(form, "from")}&toCountId=${value(form, "to")}`) as typeof report; setReport(body); } catch (error) { setMessage(error instanceof Error ? error.message : "Bericht konnte nicht erstellt werden."); } };

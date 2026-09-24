@@ -9,8 +9,8 @@ import { prisma } from "@/lib/prisma";
 const userSchema = z.object({
   name: z.string().trim().min(2).max(100),
   email: z.string().trim().email().max(254).toLowerCase(),
-  roles: z.array(z.enum(["ADMIN", "MANAGER", "USER"])).min(1).max(3),
-  priceMode: z.enum(["PUBLIC", "HELPER", "DYNAMIC"]).default("DYNAMIC"),
+  roles: z.array(z.enum(["ADMIN", "MANAGER", "USER", "GUEST"])).min(1).max(4),
+  priceMode: z.enum(["PUBLIC", "HELPER", "DYNAMIC", "GUEST"]).default("DYNAMIC"),
   password: z.string().min(12).max(128),
 });
 

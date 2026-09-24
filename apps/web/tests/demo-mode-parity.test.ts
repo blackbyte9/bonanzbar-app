@@ -7,6 +7,7 @@ const productionRoleAssignments: Record<Role, readonly Role[]> = {
   ADMIN: ["ADMIN"],
   MANAGER: ["MANAGER"],
   USER: ["USER"],
+  GUEST: ["GUEST"],
 };
 
 test("Demo-Konten haben dieselben effektiven Rollen wie gleich konfigurierte Produktionskonten", () => {
@@ -20,6 +21,7 @@ test("Demo-Konten haben dieselben effektiven Rollen wie gleich konfigurierte Pro
 
   assert.deepEqual(normalizeRoles(localDemoAccounts.MANAGER.roles), ["MANAGER", "USER"]);
   assert.equal(hasPermission(localDemoAccounts.MANAGER.roles, "consumption:create"), true);
+  assert.equal(hasPermission(localDemoAccounts.GUEST.roles, "consumption:create"), false);
 });
 
 test("Demo-Anmeldung bleibt in Production deaktiviert", () => {

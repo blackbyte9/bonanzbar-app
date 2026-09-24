@@ -4,10 +4,25 @@ import { requirePermission } from "@/lib/auth";
 import { jsonError, requestJson } from "@/lib/http";
 import { prisma } from "@/lib/prisma";
 
+const httpUrl = z.string().trim().url().max(2048).refine((value) => {
+  const protocol = new URL(value).protocol;
+  return protocol === "http:" || protocol === "https:";
+}, "Nur HTTP(S)-URLs sind erlaubt.");
+
+const youtubeUrl = httpUrl.refine((value) => {
+  const hostname = new URL(value).hostname.toLowerCase();
+  return hostname === "youtube.com" || hostname.endsWith(".youtube.com") || hostname === "youtu.be";
+}, "Bitte eine YouTube-URL angeben.");
+
 const updateSchema = z.object({
   title: z.string().trim().min(2).max(120).optional(),
   description: z.string().trim().max(2000).nullable().optional(),
   location: z.string().trim().max(120).nullable().optional(),
+  bandInfo: z.string().trim().max(4000).nullable().optional(),
+  bandHomepageUrl: httpUrl.nullable().optional(),
+  bandImageUrls: z.array(httpUrl).max(4).optional(),
+  ticketUrl: httpUrl.nullable().optional(),
+  youtubeUrl: youtubeUrl.nullable().optional(),
   startsAt: z.string().datetime().optional(),
   endsAt: z.string().datetime().nullable().optional(),
   status: z.enum(["DRAFT", "PUBLISHED", "CANCELLED"]).optional(),
@@ -32,6 +47,11 @@ export async function PATCH(request: Request, context: { params: Promise<{ id: s
         title: input.title,
         description: input.description === undefined ? undefined : input.description || null,
         location: input.location === undefined ? undefined : input.location || null,
+        bandInfo: input.bandInfo === undefined ? undefined : input.bandInfo || null,
+        bandHomepageUrl: input.bandHomepageUrl === undefined ? undefined : input.bandHomepageUrl || null,
+        bandImageUrls: input.bandImageUrls,
+        ticketUrl: input.ticketUrl === undefined ? undefined : input.ticketUrl || null,
+        youtubeUrl: input.youtubeUrl === undefined ? undefined : input.youtubeUrl || null,
         startsAt,
         endsAt,
         status: input.status,

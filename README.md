@@ -1,6 +1,6 @@
 # Bonanzbar
 
-Bonanzbar ist ein TypeScript-Monorepo für den Betrieb einer gemeinschaftlich genutzten Bar: Inventarkatalog, Bestandszählungen, Einkauf, Mitgliederrechnungen und Verkaufsberichte.
+Bonanzbar ist ein TypeScript-Monorepo für den Betrieb einer gemeinschaftlich genutzten Bar: Inventarkatalog, Bestandszählungen, Einkauf, Mitgliederrechnungen, Veranstaltungsorganisation und eine öffentliche Programmseite.
 
 | Arbeitsbereich | Zweck |
 |---|---|
@@ -63,16 +63,17 @@ Die Ausgabe muss sowohl bei **Erwartete lokale Umgebung** als auch bei **Datenba
 | Administration | Ada Administration | Inventar und Mitgliederkonten verwalten |
 | Barleitung | Max Barleitung | Bestandszählungen, Einkaufslisten, Rechnungen und Verkaufsberichte zwischen zwei Zählungen |
 | Mitglied | Mia Mitglied | Verfügbares Inventar sehen und den eigenen Konsum erfassen |
+| Gast | Gina Gast | Tagesangebot und Getränkekarte mit Gastpreisen ansehen |
 
-Die drei Demo-Konten verwenden bei der Passwortanmeldung jeweils `bonanzbar-demo`. Die Rollen-Auswahl mit Demo-Token existiert nur außerhalb der Produktionsumgebung und kann lokal mit `DEMO_AUTH_ENABLED=false` deaktiviert werden.
+Die vier Demo-Konten verwenden bei der Passwortanmeldung jeweils `bonanzbar-demo`. Die Rollen-Auswahl mit Demo-Token existiert nur außerhalb der Produktionsumgebung und kann lokal mit `DEMO_AUTH_ENABLED=false` deaktiviert werden.
 
 `npm.cmd test` prüft zusätzlich ohne Datenbankzugriff den Demo-/Produktionsvertrag: Die Demo-Konten müssen dieselben effektiven Rollen und Berechtigungen wie gleich konfigurierte Produktionskonten erhalten; in Production bleibt die Demo-Anmeldung immer deaktiviert.
 
-## Additive Rollen
+## Additive Rollen und Vorschau
 
-Konten können mehrere Rollen gleichzeitig haben. In der Mitgliederverwaltung werden die Rollen per Auswahlfeld kombiniert. Die effektiven Rollen werden serverseitig hierarchisch ergänzt: **Administration** erhält zusätzlich **Barleitung** und **Mitglied**; **Barleitung** erhält zusätzlich **Mitglied**. Dadurch kann die Barleitung auch den eigenen Konsum verwalten, während die Administration neben Inventar, Benutzerkonten und Preisen sämtliche Betriebsfunktionen nutzen kann.
+Konten können mehrere Rollen gleichzeitig haben. In der Mitgliederverwaltung werden die Rollen per Auswahlfeld kombiniert. Die effektiven Rollen werden serverseitig hierarchisch ergänzt: **Administration** erhält zusätzlich **Barleitung**, **Mitglied** und **Gast**; **Barleitung** erhält zusätzlich **Mitglied**. Dadurch kann die Barleitung auch den eigenen Konsum verwalten, während die Administration neben Inventar, Benutzerkonten und Preisen sämtliche Betriebsfunktionen nutzen kann. **Gast** ist bewusst nicht additiv: Ein reines Gastkonto sieht nur die Getränkekarte und kann keine Konsumeinträge oder Betriebsdaten schreiben.
 
-Die Bereiche **Administration**, **Barleitung** und **Mitglied** bleiben in der Oberfläche getrennt. Im Header kann ein Konto mit mehreren Rollen zwischen seinen zugewiesenen Bereichen wechseln; Navigation und Übersicht zeigen anschließend nur die Funktionen der gewählten Rolle. Die serverseitige Berechtigungsprüfung bleibt davon unabhängig und prüft weiterhin alle zugewiesenen Rollen.
+Die Bereiche **Administration**, **Barleitung**, **Mitglied** und **Gast** bleiben in der Oberfläche getrennt. Im Header kann ein Konto mit mehreren Rollen zwischen seinen zugewiesenen Bereichen wechseln; Navigation und Übersicht zeigen anschließend nur die Funktionen der gewählten Rolle. Die serverseitige Berechtigungsprüfung bleibt davon unabhängig und prüft weiterhin alle zugewiesenen Rollen. Eine Rollen-Vorschau im Administrationsbereich setzt zusätzlich einen Request-Header; die API lehnt damit jeden schreibenden Request mit `403` ab. Sie ist nur eine sichere UI-Vorschau und ersetzt keine Berechtigungsprüfung.
 
 In der Administrationsansicht öffnet ein Klick auf einen Eintrag der Mitgliederliste dessen Bearbeitungsformular. Name, E-Mail-Adresse, Passwort, Rollen, Preisregel und Kontostatus können dort aktualisiert werden.
 
@@ -164,9 +165,12 @@ Die API überprüft jede Änderung serverseitig; die Oberfläche ist nur eine Be
 - Das Anlegen von Inventarartikeln und Benutzern erfordert `ADMIN`.
 - Bestandszählungen, Einkaufslisten, Rechnungen, Umlagen, Korrekturentscheidungen und Verkaufsberichte erfordern `MANAGER`.
 - Konsumeinträge verwenden immer die Identität des angemeldeten Benutzers, niemals eine vom Client übermittelte Benutzer-ID.
+- Gastkonten dürfen keine Konsumeinträge, Social-Wall-Beiträge oder sonstige Betriebsdaten erstellen.
 - Einzelpreise für Rechnungen berechnet der Server anhand des Inventars und der Preisregel; der Client kann Preise nicht manipulieren.
 - Der globale Datenreset ist ausschließlich für `ADMIN` erreichbar und erfordert zusätzlich die wörtliche Bestätigung `reset`.
 - Zod validiert jede Änderungsanfrage und Prisma parametrisiert alle Datenbankzugriffe.
+
+`GET /api/public/events` ist absichtlich die einzige nicht authentifizierte Betriebs-API. Sie liefert ausschließlich veröffentlichte Veranstaltungstermine und freigegebene Rückblicke mit dafür vorgesehenen redaktionellen Feldern. Crew-Notizen, Dienstbewerbungen, Benutzer-, Rollen- und Abrechnungsdaten sind dort nicht enthalten.
 
 In Preview und Production melden sich Benutzer mit E-Mail-Adresse und Passwort an. Passwörter werden mit scrypt gehasht gespeichert. Die Anmeldung erzeugt eine acht Stunden gültige, signierte HTTP-only-Sitzung mit `Secure`- und `SameSite=Strict`-Cookie. Die mobile App nutzt einen gleich kurzlebigen Bearer-Token. Ändernde Cookie-Anfragen prüfen zusätzlich die Herkunft der Anfrage.
 
@@ -190,7 +194,7 @@ Bei einer Bestandszählung werden für Artikel mit Gebindegröße größer als `
 
 Die fachlichen Organisationsfunktionen aus [`blackbyte9/bonanzbar-online`](https://github.com/blackbyte9/bonanzbar-online) werden in diese Anwendung überführt. Diese App bleibt die technische Grundlage: Prisma/Neon speichert normalisierte Daten, die bestehende E-Mail-/Passwort-Anmeldung und die additiven Rollen bleiben maßgeblich. Das parallele Supabase-Auth-System und sein einzelnes JSON-Zustandsdokument werden nicht zusätzlich betrieben.
 
-Die erste übernommene Funktion ist das **Veranstaltungsboard mit Dienstbewerbungen**:
+Die übernommene Grundlage ist das **Veranstaltungsboard mit Dienstbewerbungen**:
 
 - Barleitung erstellt Entwürfe, veröffentlicht oder sagt Veranstaltungen ab und legt Dienste mit einer Sollbesetzung an.
 - Mitglieder sehen nur veröffentlichte zukünftige Termine und können ihre offenen Bewerbungen selbst zurückziehen.
@@ -200,18 +204,30 @@ Die erste übernommene Funktion ist das **Veranstaltungsboard mit Dienstbewerbun
 - Mitglieder können für eigene offene Konsumeinträge **Korrekturen** anfragen. Die Barleitung beantwortet und schließt diese ab; nur explizit ausgewählte offene Einträge werden als storniert markiert. Bereits ausgestellte Rechnungen bleiben unverändert.
 - Die Administration kann alle Betriebsdaten nach einer bewussten Bestätigung zurücksetzen. Benutzerkonten, Rollen und die Ersteinrichtungsmarkierung bleiben dabei erhalten.
 
-Die Migrationen `20260921193000_add_events_and_duties`, `20260921200000_add_bulletin_notes` und `20260921203000_add_allocations_and_corrections` legen die dazugehörigen relationalen Tabellen an. Für Daten aus einer bereits genutzten `bonanzbar-online`-Supabase-Instanz ist vor einem Import eine fachliche Zuordnung der Mitglieder erforderlich; es werden keine Authentifizierungs- oder Geschäftsdaten automatisch zwischen Datenbanken kopiert.
+Die folgenden Erweiterungen bauen darauf auf:
+
+- Eine öffentliche Programmseite zeigt veröffentlichte Termine, Bandinformationen, Bild-URLs sowie Ticket- und Video-Links ohne Anmeldung.
+- Rückblicke können erst nach dem Termin veröffentlicht werden. Bilder werden nur bei dokumentierter Fotoeinwilligung eingebunden.
+- Die Social Wall ermöglicht angemeldeten Mitgliedern Beiträge und Kommentare; Autorinnen, Autoren und Administration dürfen Beiträge entsprechend löschen.
+- Barleitung organisiert Übergabeaufgaben mit Status, Priorität und verantwortlicher Person.
+- Die Administration führt pro Veranstaltung ein manuelles Einnahmen-/Ausgabenledger. Ein Abschluss sperrt weitere Buchungen.
+- Ein gerade erfasster eigener Konsum kann für zehn Sekunden atomar storniert werden; danach bleibt der bestehende Korrekturprozess maßgeblich.
+- Tagesangebot und Gastpreise sind Teil der zentralen Bareinstellungen bzw. des Inventars. Bilddaten werden nicht als Base64 in der Datenbank gespeichert; redaktionelle Bilder sind validierte HTTP(S)-URLs.
+
+Die Migrationen `20260921193000_add_events_and_duties`, `20260921200000_add_bulletin_notes`, `20260921203000_add_allocations_and_corrections` und `20260924170000_add_public_events_and_operations` legen die relationalen Tabellen und Spalten an. Die letzte Migration übernimmt bei bestehenden Artikeln den bisherigen regulären Preis als Startwert für den Gastpreis; vorhandene Artikel werden deshalb nicht versehentlich kostenlos. Führe für jedes Deployment ausschließlich `prisma migrate deploy` bzw. den vorhandenen Build-Befehl aus, niemals `db:seed`.
+
+Für Daten aus einer bereits genutzten `bonanzbar-online`-Supabase-Instanz ist vor einem Import eine fachliche Zuordnung der Mitglieder erforderlich; es werden keine Authentifizierungs- oder Geschäftsdaten automatisch zwischen Datenbanken kopiert.
 
 Der frühere Supabase-Passwort-Reset wird nicht übernommen, da die Prisma-Anwendung dafür einen eigens konfigurierten E-Mail-Anbieter und sichere Recovery-URLs benötigt. Ebenso gibt es keinen automatischen Homepage-Import: externe Terminseiten müssen zuerst als vertrauenswürdige Quelle und ihr Datenformat fachlich festgelegt werden.
 
-## Zwei Getränkepreise und Preisregeln
+## Drei Getränkepreise und Preisregeln
 
-Jeder Inventarartikel hat einen **regulären Preis** für den offiziellen Betrieb und einen **Helferpreis**. Unter **Preise** wählt die Administration den aktuellen Betriebsmodus:
+Jeder Inventarartikel hat einen **regulären Preis** für den offiziellen Betrieb, einen **Helferpreis** und einen **Gastpreis**. Unter **Preise** wählt die Administration den aktuellen Betriebsmodus:
 
 - **Offiziell geöffnet:** Personen mit „Nach Betriebsmodus“ zahlen den regulären Preis.
 - **Helferbetrieb:** Personen mit „Nach Betriebsmodus“ zahlen den Helferpreis.
 
-Zusätzlich kann die Administration pro Person wählen, ob sie immer den regulären Preis, immer den Helferpreis oder den vom Betriebsmodus abhängigen Preis erhält. Diese Einstellung wird beim Anlegen eines Mitglieds gesetzt und unter **Preise** jederzeit geändert. Beim Eintragen eines Getränks und beim Erstellen einer Rechnung wird der passende Preis serverseitig berechnet und als Einzelpreis gespeichert; spätere Preis- oder Modusänderungen verändern abgeschlossene Einträge nicht.
+Zusätzlich kann die Administration pro Person wählen, ob sie immer den regulären Preis, immer den Helferpreis, immer den Gastpreis oder den vom Betriebsmodus abhängigen Preis erhält. Reine Gastkonten erhalten serverseitig stets die Gastpreisregel. Diese Einstellung wird beim Anlegen eines Mitglieds gesetzt und unter **Preise** jederzeit geändert. Beim Eintragen eines Getränks und beim Erstellen einer Rechnung wird der passende Preis serverseitig berechnet und als Einzelpreis gespeichert; spätere Preis- oder Modusänderungen verändern abgeschlossene Einträge nicht.
 
 Der Betriebsmodus ist in dieser ersten Version absichtlich ein expliziter Admin-Schalter, da keine festen Öffnungszeiten vorgegeben wurden. Dadurch kann er auch bei Sonderveranstaltungen, Aufbau oder Abbau zuverlässig gesetzt werden.
 
@@ -221,7 +237,7 @@ Der Betriebsmodus ist in dieser ersten Version absichtlich ein expliziter Admin-
 2. Setze den Build-Befehl auf `npm run build`. Dieser führt `prisma migrate deploy`, `prisma generate` und anschließend den Next.js-Build aus. Kurzzeitige PostgreSQL-Migrationssperren bei parallelen Vercel-Deployments werden bis zu zweimal erneut versucht.
 3. Verbinde die Neon-Datenbank in Vercel mit **Production** und **Preview**. Setze `DATABASE_URL` in jeder Umgebung auf die jeweilige Neon-Verbindungs-URL: primärer Neon-Branch für Production, automatischer Neon-Branch für Preview.
 4. Setze `AUTH_SECRET` getrennt für Production und Preview. Setze `INITIAL_ADMIN_SETUP_TOKEN` nur für Production und entferne ihn nach dem Erstzugang.
-5. Stelle sicher, dass der erste Deployment-Branch `main` ist. Die Migration `20260912110000_initial_postgresql` wird beim ersten Production-Build automatisch auf den neuen Neon-Branch angewandt.
+5. Stelle sicher, dass der erste Deployment-Branch `main` ist. Der Build wendet alle noch offenen, additiven Migrationen – einschließlich der Veranstaltungs-, Gast- und Betriebsfunktionen – automatisch auf den neuen Neon-Branch an.
 6. Füge unter **Settings → Domains** `app.bonanzbar.de` hinzu. Strato benötigt dafür den von Vercel angezeigten CNAME-Eintrag für die Subdomain. Vercel richtet das TLS-Zertifikat ein.
 
 Nach Änderungen an Vercel-Variablen muss ein neues Deployment gestartet werden, weil bereits existierende Deployments keine neuen Werte übernehmen.

@@ -22,6 +22,7 @@ const demoTokens: Record<Role, string> = {
   ADMIN: "demo-admin-local-only",
   MANAGER: "demo-manager-local-only",
   USER: "demo-member-local-only",
+  GUEST: "demo-guest-local-only",
 };
 const formatStockQuantity = (quantity: number, item: Pick<Item, "unit" | "packageSize">) => {
   if (item.packageSize === 1) return `${quantity}`;
@@ -124,7 +125,7 @@ export default function App() {
         <Pressable onPress={() => void load()} style={styles.refresh}><Text style={styles.refreshText}>{loading ? "..." : "Aktualisieren"}</Text></Pressable>
       </View>
       {demoMode && <View style={styles.roles}>
-        {(["USER", "MANAGER", "ADMIN"] as Role[]).map((candidate) => <Pressable key={candidate} onPress={() => setRole(candidate)} style={[styles.role, candidate === role && styles.roleSelected]}><Text style={[styles.roleText, candidate === role && styles.roleTextSelected]}>{roleLabels[candidate]}</Text></Pressable>)}
+        {(["USER", "MANAGER", "ADMIN", "GUEST"] as Role[]).map((candidate) => <Pressable key={candidate} onPress={() => setRole(candidate)} style={[styles.role, candidate === role && styles.roleSelected]}><Text style={[styles.roleText, candidate === role && styles.roleTextSelected]}>{roleLabels[candidate]}</Text></Pressable>)}
       </View>}
       {loading && !data ? <View style={styles.loader}><ActivityIndicator color="#275c46" /></View> : (
         <FlatList

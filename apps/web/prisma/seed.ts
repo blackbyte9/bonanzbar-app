@@ -1,4 +1,4 @@
-import { DatabaseEnvironmentName, EventStatus, PriceMode, PrismaClient } from "../generated/prisma";
+import { DatabaseEnvironmentName, EventStatus, PriceMode, PrismaClient } from "../generated/prisma-postgres";
 import { localDemoAccounts } from "../lib/demo-mode";
 import { hashPassword } from "../lib/password";
 
@@ -20,6 +20,12 @@ async function main() {
 
   await prisma.eventDutyApplication.deleteMany();
   await prisma.eventDuty.deleteMany();
+  await prisma.eventLedgerEntry.deleteMany();
+  await prisma.eventLedger.deleteMany();
+  await prisma.eventRecap.deleteMany();
+  await prisma.socialComment.deleteMany();
+  await prisma.socialPost.deleteMany();
+  await prisma.handoverTask.deleteMany();
   await prisma.bulletinNote.deleteMany();
   await prisma.barEvent.deleteMany();
   await prisma.billLine.deleteMany();
@@ -37,17 +43,33 @@ async function main() {
   await prisma.user.deleteMany();
 
   const passwordHash = await hashPassword("bonanzbar-demo");
-  const [admin, manager, member] = await Promise.all([
+  const [admin, manager, member, guest] = await Promise.all([
     prisma.user.create({ data: { name: "Ada Administration", email: localDemoAccounts.ADMIN.email, roles: [...localDemoAccounts.ADMIN.roles], priceMode: PriceMode.PUBLIC, passwordHash } }),
     prisma.user.create({ data: { name: "Max Barleitung", email: localDemoAccounts.MANAGER.email, roles: [...localDemoAccounts.MANAGER.roles], priceMode: PriceMode.HELPER, passwordHash } }),
     prisma.user.create({ data: { name: "Mia Mitglied", email: localDemoAccounts.USER.email, roles: [...localDemoAccounts.USER.roles], priceMode: PriceMode.DYNAMIC, passwordHash } }),
+    prisma.user.create({ data: { name: "Gina Gast", email: localDemoAccounts.GUEST.email, roles: [...localDemoAccounts.GUEST.roles], priceMode: PriceMode.GUEST, passwordHash } }),
   ]);
-  await prisma.barSettings.create({ data: { id: "default", isOfficiallyOpen: false, updatedBy: admin.id } });
+  await prisma.barSettings.create({
+    data: {
+      id: "default",
+      isOfficiallyOpen: false,
+      dailySpecialTitle: "Konzert-Cocktail",
+      dailySpecialDescription: "Unser Tagesangebot zur Live-Musik.",
+      dailySpecialPriceCents: 550,
+      dailySpecialDate: new Date(),
+      dailySpecialActive: true,
+      updatedBy: admin.id,
+    },
+  });
   const autumnEvent = await prisma.barEvent.create({
     data: {
       title: "Bonanzbar Herbstabend",
       description: "Gemeinsamer Barabend mit Musik und gemütlichem Ausklang.",
       location: "Bonanzbar",
+      bandInfo: "Live-Musik, offene Bar und ein gemeinsamer Ausklang.",
+      bandHomepageUrl: "https://bonanzbar.jimdofree.com/",
+      ticketUrl: "https://bonanzbar.jimdofree.com/",
+      youtubeUrl: "https://www.youtube.com/",
       startsAt: new Date("2026-10-17T18:00:00.000Z"),
       endsAt: new Date("2026-10-18T01:00:00.000Z"),
       status: EventStatus.PUBLISHED,
@@ -66,10 +88,10 @@ async function main() {
   });
 
   const items = await Promise.all([
-    prisma.inventoryItem.create({ data: { name: "Pils", category: "Bier", unit: "Flasche", packageSize: 20, priceCents: 280, helperPriceCents: 180, reorderLevel: 24 } }),
-    prisma.inventoryItem.create({ data: { name: "Rotwein", category: "Wein", unit: "Flasche", packageSize: 6, priceCents: 1600, helperPriceCents: 1000, reorderLevel: 6 } }),
-    prisma.inventoryItem.create({ data: { name: "Mineralwasser", category: "Softdrinks", unit: "Flasche", packageSize: 12, priceCents: 150, helperPriceCents: 100, reorderLevel: 18 } }),
-    prisma.inventoryItem.create({ data: { name: "Gin", category: "Spirituosen", unit: "Flasche", packageSize: 1, priceCents: 2450, helperPriceCents: 1800, reorderLevel: 3 } }),
+    prisma.inventoryItem.create({ data: { name: "Pils", category: "Bier", unit: "Flasche", packageSize: 20, priceCents: 280, helperPriceCents: 180, guestPriceCents: 320, reorderLevel: 24 } }),
+    prisma.inventoryItem.create({ data: { name: "Rotwein", category: "Wein", unit: "Flasche", packageSize: 6, priceCents: 1600, helperPriceCents: 1000, guestPriceCents: 1800, reorderLevel: 6 } }),
+    prisma.inventoryItem.create({ data: { name: "Mineralwasser", category: "Softdrinks", unit: "Flasche", packageSize: 12, priceCents: 150, helperPriceCents: 100, guestPriceCents: 180, reorderLevel: 18 } }),
+    prisma.inventoryItem.create({ data: { name: "Gin", category: "Spirituosen", unit: "Flasche", packageSize: 1, priceCents: 2450, helperPriceCents: 1800, guestPriceCents: 2800, reorderLevel: 3 } }),
   ]);
 
   const start = await prisma.stockCount.create({
@@ -111,8 +133,25 @@ async function main() {
       lines: { create: [{ itemId: items[0].id, description: "Pilsner", quantity: 2, unitCents: 280 }] },
     },
   });
+  await prisma.socialPost.create({
+    data: {
+      authorId: member.id,
+      body: "Ich freue mich auf den Herbstabend!",
+      comments: { create: { authorId: manager.id, body: "Wir auch - Dienstplan und Einkauf stehen bereit." } },
+    },
+  });
+  await prisma.handoverTask.create({
+    data: { text: "Kühlung vor dem Herbstabend kontrollieren", assigneeId: manager.id, priority: "URGENT", createdBy: admin.id },
+  });
+  await prisma.eventLedger.create({
+    data: {
+      eventId: autumnEvent.id,
+      createdBy: admin.id,
+      entries: { create: [{ label: "Vorverkauf", amountCents: 12000, kind: "INCOME", createdBy: admin.id }] },
+    },
+  });
 
-  console.log(`${items.length} Artikel und die Eröffnungszählung ${start.id} wurden angelegt.`);
+  console.log(`${items.length} Artikel, vier Demo-Konten und die Eröffnungszählung ${start.id} wurden angelegt.`);
 }
 
 main()

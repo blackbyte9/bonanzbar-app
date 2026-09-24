@@ -10,10 +10,25 @@ const dutySchema = z.object({
   slots: z.coerce.number().int().min(1).max(50),
 });
 
+const httpUrl = z.string().trim().url().max(2048).refine((value) => {
+  const protocol = new URL(value).protocol;
+  return protocol === "http:" || protocol === "https:";
+}, "Nur HTTP(S)-URLs sind erlaubt.");
+
+const youtubeUrl = httpUrl.refine((value) => {
+  const hostname = new URL(value).hostname.toLowerCase();
+  return hostname === "youtube.com" || hostname.endsWith(".youtube.com") || hostname === "youtu.be";
+}, "Bitte eine YouTube-URL angeben.");
+
 const eventSchema = z.object({
   title: z.string().trim().min(2).max(120),
   description: z.string().trim().max(2000).optional(),
   location: z.string().trim().max(120).optional(),
+  bandInfo: z.string().trim().max(4000).optional(),
+  bandHomepageUrl: httpUrl.optional(),
+  bandImageUrls: z.array(httpUrl).max(4).default([]),
+  ticketUrl: httpUrl.optional(),
+  youtubeUrl: youtubeUrl.optional(),
   startsAt: z.string().datetime(),
   endsAt: z.string().datetime().optional(),
   status: z.enum(["DRAFT", "PUBLISHED", "CANCELLED"]).default("DRAFT"),
@@ -63,6 +78,11 @@ export async function POST(request: Request) {
         title: input.title,
         description: input.description || null,
         location: input.location || null,
+        bandInfo: input.bandInfo || null,
+        bandHomepageUrl: input.bandHomepageUrl || null,
+        bandImageUrls: input.bandImageUrls,
+        ticketUrl: input.ticketUrl || null,
+        youtubeUrl: input.youtubeUrl || null,
         startsAt: new Date(input.startsAt),
         endsAt: input.endsAt ? new Date(input.endsAt) : null,
         status: input.status,

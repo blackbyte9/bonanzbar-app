@@ -12,6 +12,7 @@ const itemSchema = z.object({
   reorderLevel: z.coerce.number().int().min(0).max(100000),
   priceCents: z.coerce.number().int().min(0).max(100000000),
   helperPriceCents: z.coerce.number().int().min(0).max(100000000),
+  guestPriceCents: z.coerce.number().int().min(0).max(100000000),
 });
 
 export async function POST(request: Request) {

@@ -42,12 +42,13 @@ function authenticatedUser(user: {
   roles: Role[];
   priceMode: PriceMode;
 }): AuthenticatedUser {
+  const normalizedRoles = normalizeRoles(user.roles);
   return {
     id: user.id,
     name: user.name,
     email: user.email,
-    roles: normalizeRoles(user.roles),
-    priceMode: user.priceMode,
+    roles: normalizedRoles,
+    priceMode: normalizedRoles.includes("GUEST") && !normalizedRoles.includes("USER") ? "GUEST" : user.priceMode,
   };
 }
 
@@ -60,6 +61,13 @@ async function findUser(where: { id: string } | { email: string }) {
 }
 
 export async function authenticate(request: Request): Promise<AuthenticatedUser | Response> {
+  if (
+    !["GET", "HEAD", "OPTIONS"].includes(request.method)
+    && request.headers.has("x-bonanzbar-preview-role")
+  ) {
+    return NextResponse.json({ error: "Die Rollen-Vorschau ist schreibgeschützt." }, { status: 403 });
+  }
+
   const authorization = request.headers.get("authorization");
   const bearerToken = authorization?.startsWith("Bearer ") ? authorization.slice(7) : undefined;
   const cookieToken = bearerToken ? undefined : readCookie(request, sessionCookieName);

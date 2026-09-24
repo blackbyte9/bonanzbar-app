@@ -3,7 +3,7 @@ import { z } from "zod";
 import { isDemoAuthEnabled, localDemoTokens } from "@/lib/auth";
 import { jsonError, requestJson } from "@/lib/http";
 
-const inputSchema = z.object({ role: z.enum(["ADMIN", "MANAGER", "USER"]) });
+const inputSchema = z.object({ role: z.enum(["ADMIN", "MANAGER", "USER", "GUEST"]) });
 
 export async function GET() {
   return NextResponse.json({ enabled: isDemoAuthEnabled() });

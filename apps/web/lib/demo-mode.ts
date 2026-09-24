@@ -10,6 +10,7 @@ export const localDemoAccounts = {
   ADMIN: { token: "demo-admin-local-only", email: "ada@bonanzbar.local", roles: ["ADMIN", "MANAGER", "USER"] },
   MANAGER: { token: "demo-manager-local-only", email: "max@bonanzbar.local", roles: ["MANAGER"] },
   USER: { token: "demo-member-local-only", email: "mia@bonanzbar.local", roles: ["USER"] },
+  GUEST: { token: "demo-guest-local-only", email: "gina@bonanzbar.local", roles: ["GUEST"] },
 } as const satisfies Record<Role, LocalDemoAccount>;
 
 export const localDemoTokens = Object.fromEntries(

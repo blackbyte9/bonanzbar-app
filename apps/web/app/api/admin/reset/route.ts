@@ -12,6 +12,12 @@ export async function POST(request: Request) {
   try {
     resetSchema.parse(await requestJson(request));
     await prisma.$transaction([
+      prisma.eventLedgerEntry.deleteMany(),
+      prisma.eventLedger.deleteMany(),
+      prisma.eventRecap.deleteMany(),
+      prisma.socialComment.deleteMany(),
+      prisma.socialPost.deleteMany(),
+      prisma.handoverTask.deleteMany(),
       prisma.billLine.deleteMany(),
       prisma.bill.deleteMany(),
       prisma.costAllocation.deleteMany(),

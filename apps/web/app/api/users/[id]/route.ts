@@ -9,8 +9,8 @@ import { prisma } from "@/lib/prisma";
 const updateSchema = z.object({
   name: z.string().trim().min(2).max(100).optional(),
   email: z.string().trim().email().max(254).toLowerCase().optional(),
-  roles: z.array(z.enum(["ADMIN", "MANAGER", "USER"])).min(1).max(3).optional(),
-  priceMode: z.enum(["PUBLIC", "HELPER", "DYNAMIC"]).optional(),
+  roles: z.array(z.enum(["ADMIN", "MANAGER", "USER", "GUEST"])).min(1).max(4).optional(),
+  priceMode: z.enum(["PUBLIC", "HELPER", "DYNAMIC", "GUEST"]).optional(),
   active: z.boolean().optional(),
   password: z.string().min(12).max(128).optional(),
 }).refine((data) => Object.keys(data).length > 0, "Mindestens ein Benutzerfeld muss angegeben werden.");

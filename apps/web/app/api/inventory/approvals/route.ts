@@ -51,6 +51,7 @@ export async function POST(request: Request) {
             reorderLevel: shoppingItem.proposedReorderLevel,
             priceCents: shoppingItem.proposedPriceCents,
             helperPriceCents: shoppingItem.proposedHelperPriceCents,
+            guestPriceCents: shoppingItem.proposedPriceCents,
             active: true,
           },
         })
@@ -63,6 +64,7 @@ export async function POST(request: Request) {
             reorderLevel: shoppingItem.proposedReorderLevel,
             priceCents: shoppingItem.proposedPriceCents,
             helperPriceCents: shoppingItem.proposedHelperPriceCents,
+            guestPriceCents: shoppingItem.proposedPriceCents,
           },
         });
 

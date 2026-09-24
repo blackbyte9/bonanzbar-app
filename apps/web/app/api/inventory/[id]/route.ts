@@ -12,6 +12,7 @@ const updateSchema = z.object({
   reorderLevel: z.coerce.number().int().min(0).max(100000).optional(),
   priceCents: z.coerce.number().int().min(0).max(100000000).optional(),
   helperPriceCents: z.coerce.number().int().min(0).max(100000000).optional(),
+  guestPriceCents: z.coerce.number().int().min(0).max(100000000).optional(),
   active: z.boolean().optional(),
 }).refine((data) => Object.keys(data).length > 0, "Mindestens ein Inventarfeld muss angegeben werden.");
 
