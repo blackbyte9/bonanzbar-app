@@ -91,15 +91,17 @@ async function main() {
     prisma.inventoryItem.create({ data: { name: "Pils", category: "Bier", unit: "Flasche", packageSize: 20, priceCents: 280, helperPriceCents: 180, guestPriceCents: 320, reorderLevel: 24 } }),
     prisma.inventoryItem.create({ data: { name: "Rotwein", category: "Wein", unit: "Flasche", packageSize: 6, priceCents: 1600, helperPriceCents: 1000, guestPriceCents: 1800, reorderLevel: 6 } }),
     prisma.inventoryItem.create({ data: { name: "Mineralwasser", category: "Softdrinks", unit: "Flasche", packageSize: 12, priceCents: 150, helperPriceCents: 100, guestPriceCents: 180, reorderLevel: 18 } }),
-    prisma.inventoryItem.create({ data: { name: "Gin", category: "Spirituosen", unit: "Flasche", packageSize: 1, priceCents: 2450, helperPriceCents: 1800, guestPriceCents: 2800, reorderLevel: 3 } }),
+    prisma.inventoryItem.create({ data: { name: "Gin", category: "Spirituosen", unit: "Flasche", packageSize: 1, priceCents: 2450, helperPriceCents: 1800, guestPriceCents: 2800, reorderLevel: 3, trackInventory: true, showInMenu: false } }),
+    prisma.inventoryItem.create({ data: { name: "Gin Tonic", category: "Longdrinks", unit: "Glas", packageSize: 1, priceCents: 700, helperPriceCents: 500, guestPriceCents: 750, reorderLevel: 0, trackInventory: false, showInMenu: true } }),
   ]);
+  const trackedItems = items.filter((item) => item.trackInventory);
 
   const start = await prisma.stockCount.create({
     data: {
       label: "Eröffnungszählung",
       countedAt: new Date("2026-08-01T18:00:00.000Z"),
       createdBy: admin.id,
-      lines: { create: items.map((item, index) => ({ itemId: item.id, quantity: [72, 18, 48, 8][index] })) },
+      lines: { create: trackedItems.map((item, index) => ({ itemId: item.id, quantity: [72, 18, 48, 8][index] })) },
     },
   });
   await prisma.stockCount.create({
@@ -107,7 +109,7 @@ async function main() {
       label: "Letzte Zählung",
       countedAt: new Date("2026-09-01T18:00:00.000Z"),
       createdBy: manager.id,
-      lines: { create: items.map((item, index) => ({ itemId: item.id, quantity: [31, 10, 23, 5][index] })) },
+      lines: { create: trackedItems.map((item, index) => ({ itemId: item.id, quantity: [31, 10, 23, 5][index] })) },
     },
   });
 

@@ -22,7 +22,7 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: "Wähle zwei Zählungen in zeitlicher Reihenfolge." }, { status: 400 });
     }
     const ending = new Map(to.lines.map((line) => [line.itemId, line.quantity]));
-    const sold = from.lines.map((line) => {
+    const sold = from.lines.filter((line) => line.item.trackInventory).map((line) => {
       const quantity = Math.max(0, line.quantity - (ending.get(line.itemId) ?? 0));
       return { itemId: line.itemId, name: line.item.name, unit: line.item.unit, quantity, revenueCents: quantity * line.item.priceCents };
     }).filter((line) => line.quantity > 0);

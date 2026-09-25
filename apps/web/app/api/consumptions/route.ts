@@ -16,10 +16,10 @@ export async function POST(request: Request) {
   try {
     const input = consumptionSchema.parse(await requestJson(request));
     const [item, barSettings] = await Promise.all([
-      prisma.inventoryItem.findFirst({ where: { id: input.itemId, active: true } }),
+      prisma.inventoryItem.findFirst({ where: { id: input.itemId, active: true, showInMenu: true } }),
       prisma.barSettings.upsert({ where: { id: "default" }, update: {}, create: { id: "default" } }),
     ]);
-    if (!item) return NextResponse.json({ error: "Dieser Inventarartikel ist nicht verfügbar." }, { status: 400 });
+    if (!item) return NextResponse.json({ error: "Dieser Artikel steht nicht auf der Getränkekarte und kann nicht eingetragen werden." }, { status: 400 });
     const consumption = await prisma.consumption.create({
       data: {
         userId: user.id,

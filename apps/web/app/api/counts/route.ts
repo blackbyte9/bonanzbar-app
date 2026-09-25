@@ -22,6 +22,14 @@ export async function POST(request: Request) {
   if (user instanceof Response) return user;
   try {
     const input = countSchema.parse(await requestJson(request));
+    const itemIds = input.lines.map((line) => line.itemId);
+    const trackedItems = await prisma.inventoryItem.findMany({
+      where: { id: { in: itemIds }, active: true, trackInventory: true },
+      select: { id: true },
+    });
+    if (trackedItems.length !== new Set(itemIds).size) {
+      return NextResponse.json({ error: "Eine Bestandszählung darf nur aktive Inventarartikel enthalten." }, { status: 400 });
+    }
     const count = await prisma.stockCount.create({
       data: {
         label: input.label,

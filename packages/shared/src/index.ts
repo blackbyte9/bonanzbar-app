@@ -94,6 +94,10 @@ export interface InventoryItemInput {
   packageSize: number;
   reorderLevel: number;
   priceCents: number;
+  helperPriceCents?: number;
+  guestPriceCents?: number;
+  trackInventory?: boolean;
+  showInMenu?: boolean;
 }
 
 export function splitQuantityIntoPackages(quantity: number, packageSize: number): { packages: number; units: number } {

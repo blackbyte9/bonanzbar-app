@@ -20,11 +20,11 @@ export async function POST(request: Request) {
     const input = listSchema.parse(await requestJson(request));
     const requestedItemIds = input.items.flatMap((item) => item.itemId ? [item.itemId] : []);
     const inventoryItems = requestedItemIds.length
-      ? await prisma.inventoryItem.findMany({ where: { id: { in: requestedItemIds }, active: true } })
+      ? await prisma.inventoryItem.findMany({ where: { id: { in: requestedItemIds }, active: true, trackInventory: true } })
       : [];
     const inventoryById = new Map(inventoryItems.map((item) => [item.id, item]));
     if (inventoryById.size !== new Set(requestedItemIds).size) {
-      return NextResponse.json({ error: "Ein ausgewählter Inventarartikel ist nicht verfügbar." }, { status: 400 });
+      return NextResponse.json({ error: "Ein ausgewählter Artikel wird nicht im Inventar geführt und kann nicht nachbestellt werden." }, { status: 400 });
     }
 
     const list = await prisma.shoppingList.create({

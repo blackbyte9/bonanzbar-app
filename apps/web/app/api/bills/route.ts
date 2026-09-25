@@ -21,11 +21,11 @@ export async function POST(request: Request) {
     const input = billSchema.parse(await requestJson(request));
     const [recipient, inventory, barSettings] = await Promise.all([
       prisma.user.findFirst({ where: { id: input.recipientId, active: true } }),
-      prisma.inventoryItem.findMany({ where: { id: { in: input.lines.map((line) => line.itemId) }, active: true } }),
+      prisma.inventoryItem.findMany({ where: { id: { in: input.lines.map((line) => line.itemId) }, active: true, showInMenu: true } }),
       prisma.barSettings.upsert({ where: { id: "default" }, update: {}, create: { id: "default" } }),
     ]);
     if (!recipient || inventory.length !== new Set(input.lines.map((line) => line.itemId)).size) {
-      return NextResponse.json({ error: "Der Rechnungsempfänger oder ein Inventarartikel ist nicht verfügbar." }, { status: 400 });
+      return NextResponse.json({ error: "Der Rechnungsempfänger oder ein Artikel außerhalb der Getränkekarte ist nicht verfügbar." }, { status: 400 });
     }
     const items = new Map(inventory.map((item) => [item.id, item]));
     const lines = input.lines.map((line) => {

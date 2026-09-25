@@ -14,7 +14,7 @@ import {
   View,
 } from "react-native";
 
-type Item = { id: string; name: string; category: string; unit: string; packageSize: number; priceCents: number; helperPriceCents: number; effectivePriceCents: number; reorderLevel: number; onHand: number };
+type Item = { id: string; name: string; category: string; unit?: string; packageSize?: number; priceCents?: number; helperPriceCents?: number; trackInventory?: boolean; showInMenu?: boolean; effectivePriceCents: number; reorderLevel?: number; onHand?: number };
 type Snapshot = { user: { name: string; roles: Role[] }; inventory: Item[] };
 
 const API_URL = process.env.EXPO_PUBLIC_API_URL ?? "http://localhost:3000";
@@ -25,8 +25,9 @@ const demoTokens: Record<Role, string> = {
   GUEST: "demo-guest-local-only",
 };
 const formatStockQuantity = (quantity: number, item: Pick<Item, "unit" | "packageSize">) => {
-  if (item.packageSize === 1) return `${quantity}`;
-  const { packages, units } = splitQuantityIntoPackages(quantity, item.packageSize);
+  const packageSize = item.packageSize ?? 1;
+  if (packageSize === 1) return `${quantity}`;
+  const { packages, units } = splitQuantityIntoPackages(quantity, packageSize);
   return `${packages} Geb.${units > 0 ? ` + ${units}` : ""}`;
 };
 
@@ -89,8 +90,11 @@ export default function App() {
     }
   };
 
-  const lowStock = useMemo(() => data?.inventory.filter((item) => item.onHand <= item.reorderLevel).length ?? 0, [data]);
-  const canRecordConsumption = data?.user.roles.includes("USER") ?? role === "USER";
+  const isGuest = data?.user.roles.length === 1 && data.user.roles[0] === "GUEST";
+  const canRecordConsumption = !isGuest && (data?.user.roles.includes("USER") ?? role === "USER");
+  const menuItems = useMemo(() => data?.inventory.filter((item) => item.showInMenu !== false) ?? [], [data]);
+  const displayItems = isGuest ? menuItems : data?.inventory ?? [];
+  const lowStock = useMemo(() => data?.inventory.filter((item) => item.trackInventory !== false && (item.onHand ?? 0) <= (item.reorderLevel ?? 0)).length ?? 0, [data]);
   const recordDrink = async () => {
     if (!selectedItem) return;
     try {
@@ -129,16 +133,16 @@ export default function App() {
       </View>}
       {loading && !data ? <View style={styles.loader}><ActivityIndicator color="#275c46" /></View> : (
         <FlatList
-          data={data?.inventory ?? []}
+          data={displayItems}
           keyExtractor={(item) => item.id}
           contentContainerStyle={styles.list}
           ListHeaderComponent={<>
-            <View style={styles.welcome}><Text style={styles.welcomeText}>Angemeldet als {data?.user.name ?? roleLabels[role]}</Text><Text style={styles.welcomeDetail}>{canRecordConsumption ? "Tippe einen Artikel an, um ihn deinem Konto hinzuzufügen." : lowStock === 1 ? "1 Artikel braucht Aufmerksamkeit." : `${lowStock} Artikel brauchen Aufmerksamkeit.`}</Text></View>
+            <View style={styles.welcome}><Text style={styles.welcomeText}>Angemeldet als {data?.user.name ?? roleLabels[role]}</Text><Text style={styles.welcomeDetail}>{isGuest ? "Hier siehst du die aktuelle Getränkekarte mit Gastpreisen." : canRecordConsumption ? "Tippe einen Artikel an, um ihn deinem Konto hinzuzufügen." : lowStock === 1 ? "1 Artikel braucht Aufmerksamkeit." : `${lowStock} Artikel brauchen Aufmerksamkeit.`}</Text></View>
             {selectedItem && <View style={styles.consumeCard}><Text style={styles.cardTitle}>{selectedItem.name} hinzufügen</Text><Text style={styles.muted}>{formatCurrency(selectedItem.effectivePriceCents)} pro Stück</Text><View style={styles.consumeRow}><TextInput style={styles.input} keyboardType="number-pad" value={quantity} onChangeText={setQuantity} /><Pressable style={styles.primary} onPress={() => void recordDrink()}><Text style={styles.primaryText}>Eintragen</Text></Pressable><Pressable onPress={() => setSelectedItem(null)}><Text style={styles.cancel}>Abbrechen</Text></Pressable></View></View>}
             {!canRecordConsumption && <View style={styles.managerNote}><Text style={styles.cardTitle}>Betriebsansicht</Text><Text style={styles.muted}>Für Zählungen, Einkaufslisten, Rechnungen und Zeitraumberichte nutze die Web-Verwaltung.</Text></View>}
-            <Text style={styles.sectionTitle}>Verfügbares Inventar</Text>
+            <Text style={styles.sectionTitle}>{isGuest ? "Getränkekarte" : "Verfügbares Inventar"}</Text>
           </>}
-          renderItem={({ item }) => <Pressable style={styles.item} onPress={() => canRecordConsumption ? setSelectedItem(item) : undefined}><View style={styles.itemDetails}><Text style={styles.itemName}>{item.name}</Text><Text style={styles.muted}>{item.category} · {formatCurrency(item.effectivePriceCents)}</Text></View><View style={styles.stock}><Text style={[styles.stockValue, item.onHand <= item.reorderLevel && styles.low]}>{formatStockQuantity(item.onHand, item)}</Text><Text style={styles.muted}>{item.packageSize === 1 ? item.unit : `${item.packageSize} ${item.unit} je Geb.`}</Text></View></Pressable>}
+          renderItem={({ item }) => <Pressable style={styles.item} onPress={() => canRecordConsumption && item.showInMenu !== false ? setSelectedItem(item) : undefined}><View style={styles.itemDetails}><Text style={styles.itemName}>{item.name}</Text><Text style={styles.muted}>{item.category} · {formatCurrency(item.effectivePriceCents)}</Text></View>{!isGuest && item.trackInventory !== false && <View style={styles.stock}><Text style={[styles.stockValue, (item.onHand ?? 0) <= (item.reorderLevel ?? 0) && styles.low]}>{formatStockQuantity(item.onHand ?? 0, item)}</Text><Text style={styles.muted}>{item.packageSize === 1 ? item.unit : `${item.packageSize} ${item.unit} je Geb.`}</Text></View>}{!isGuest && item.trackInventory === false && <Text style={styles.muted}>Nicht inventargeführt</Text>}</Pressable>}
           ListEmptyComponent={<Text style={styles.muted}>Kein Inventar verfügbar. Starte die Web-API und fülle die Beispieldaten ein.</Text>}
         />
       )}

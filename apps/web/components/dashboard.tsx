@@ -5,7 +5,7 @@ import { FormEvent, useEffect, useMemo, useState } from "react";
 import { DailySpecialEditor, EventLedgerAdministration, EventRecapAdministration, HandoverTaskBoard, SocialWall } from "@/components/partner-operations";
 import { PublicProgram } from "@/components/public-program";
 
-type Item = { id: string; name: string; category: string; unit: string; packageSize: number; priceCents: number; helperPriceCents: number; guestPriceCents: number; effectivePriceCents: number; reorderLevel: number; onHand: number };
+type Item = { id: string; name: string; category: string; unit: string; packageSize: number; priceCents: number; helperPriceCents: number; guestPriceCents: number; trackInventory?: boolean; showInMenu?: boolean; effectivePriceCents: number; reorderLevel: number; onHand: number };
 type Count = { id: string; label: string; countedAt: string; lines: { itemId: string; quantity: number }[] };
 type CountValue = { packages: number; units: number };
 type User = { id: string; name: string; email: string; roles?: Role[]; priceMode?: PriceMode; active?: boolean };
@@ -104,6 +104,13 @@ const formatStockQuantity = (quantity: number, item: Pick<Item, "unit" | "packag
   const { packages, units } = splitQuantityIntoPackages(quantity, item.packageSize);
   return `${packages} Gebinde${units > 0 ? ` + ${units} ${item.unit}` : ""}`;
 };
+const itemModeLabel = (item: Pick<Item, "trackInventory" | "showInMenu">) => item.trackInventory !== false && item.showInMenu !== false
+  ? "Inventar & Getränkekarte"
+  : item.trackInventory !== false
+    ? "Nur Inventar"
+    : item.showInMenu !== false
+      ? "Nur Getränkekarte"
+      : "Ausgeblendet";
 async function readApiResponse<T extends object>(response: Response): Promise<T> {
   const text = await response.text();
   if (!text.trim()) {
@@ -129,7 +136,6 @@ export function Dashboard() {
   const [message, setMessage] = useState("");
   const [loading, setLoading] = useState(false);
   const [activeRole, setActiveRole] = useState<Role | null>(null);
-  const [previewRole, setPreviewRole] = useState<Role | null>(null);
   const [tab, setTab] = useState("overview");
   const [countValues, setCountValues] = useState<Record<string, CountValue>>({});
   const [shoppingSource, setShoppingSource] = useState<"inventory" | "new">("inventory");
@@ -139,10 +145,11 @@ export function Dashboard() {
   const [showPublicProgram, setShowPublicProgram] = useState(false);
 
   const request = async <T extends object = { error?: string }>(path: string, init?: RequestInit): Promise<T> => {
+    const visibleRoleHeader = activeRole;
     const response = await fetch(path, {
       ...init,
       credentials: "same-origin",
-      headers: { "Content-Type": "application/json", ...(demoToken ? { "x-bonanzbar-token": demoToken } : {}), ...(previewRole ? { "x-bonanzbar-preview-role": previewRole } : {}), ...(init?.headers ?? {}) },
+      headers: { "Content-Type": "application/json", ...(demoToken ? { "x-bonanzbar-token": demoToken } : {}), ...(visibleRoleHeader ? { "x-bonanzbar-visible-role": visibleRoleHeader } : {}), ...(init?.headers ?? {}) },
     });
     if (response.status === 204) return {} as T;
     const body = await readApiResponse<T & { error?: string }>(response);
@@ -155,7 +162,7 @@ export function Dashboard() {
     try {
       const result = await request<Bootstrap>("/api/bootstrap");
       setData(result);
-      setCountValues(countValuesFor(result.inventory));
+      setCountValues(countValuesFor(result.inventory.filter((item) => item.trackInventory !== false)));
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Daten konnten nicht geladen werden.");
     } finally {
@@ -164,13 +171,13 @@ export function Dashboard() {
   };
   useEffect(() => {
     if (sessionActive) void refresh();
-  }, [sessionActive, demoToken]);
+  }, [sessionActive, demoToken, activeRole]);
   useEffect(() => {
     const restoreSession = async () => {
       try {
         const result = await request<Bootstrap>("/api/bootstrap");
         setData(result);
-        setCountValues(countValuesFor(result.inventory));
+        setCountValues(countValuesFor(result.inventory.filter((item) => item.trackInventory !== false)));
         setSessionActive(true);
       } catch {
         // A missing or expired cookie is expected before a user signs in.
@@ -307,7 +314,9 @@ export function Dashboard() {
       return { ...values, [item.id]: countValueFor(next.packages * item.packageSize + next.units, item.packageSize) };
     });
   };
-  const lowStock = useMemo(() => data?.inventory.filter((item) => item.onHand <= item.reorderLevel) ?? [], [data]);
+  const trackedInventory = useMemo(() => data?.inventory.filter((item) => item.trackInventory !== false) ?? [], [data]);
+  const menuItems = useMemo(() => data?.inventory.filter((item) => item.showInMenu !== false) ?? [], [data]);
+  const lowStock = useMemo(() => trackedInventory.filter((item) => item.onHand <= item.reorderLevel), [trackedInventory]);
   const upcomingEvents = useMemo(() => data?.events?.filter((event) => event.status === "PUBLISHED" && new Date(event.startsAt) >= new Date()) ?? [], [data]);
   const openBills = useMemo(() => data?.bills?.filter((bill) => bill.status === "OPEN").length ?? 0, [data]);
   const pendingCorrections = useMemo(() => data?.correctionRequests?.filter((correction) => correction.status === "PENDING").length ?? 0, [data]);
@@ -342,7 +351,7 @@ export function Dashboard() {
     );
   }
 
-  const visibleRole = previewRole ?? (activeRole && data.user.roles.includes(activeRole) ? activeRole : data.user.roles[0] ?? "USER");
+  const visibleRole = activeRole && data.user.roles.includes(activeRole) ? activeRole : data.user.roles[0] ?? "USER";
   const isAdmin = visibleRole === "ADMIN";
   const isManager = visibleRole === "MANAGER";
   const isMember = visibleRole === "USER";
@@ -393,23 +402,9 @@ export function Dashboard() {
         : "Entdecke Programm, Tagesangebot und die aktuelle Getränkekarte.";
   const currentAction = homeActions.find((action) => action.tab === tab);
   const switchRole = (role: Role) => {
-    setPreviewRole(null);
     setActiveRole(role);
     setTab("overview");
     setMessage("");
-  };
-  const switchPreview = (role: Role | null) => {
-    setPreviewRole(role);
-    setActiveRole(null);
-    setTab("overview");
-    setMessage("");
-  };
-  const switchVisibleRole = (role: Role) => {
-    if (data.user.roles.includes("ADMIN") && role !== "ADMIN") {
-      switchPreview(role);
-      return;
-    }
-    switchRole(role);
   };
   const openTab = (nextTab: string) => {
     setTab(nextTab);
@@ -423,12 +418,11 @@ export function Dashboard() {
         <div className="brand-lockup"><img className="brand-logo" src="/bonanzbar-logo.png" alt="Bonanzbar" /></div>
         <div className="header-actions">
           <div className="role-switcher" role="tablist" aria-label="Bereich auswählen">
-            {data.user.roles.map((role) => <button key={role} type="button" role="tab" aria-selected={role === visibleRole} className={role === visibleRole ? "active" : ""} onClick={() => switchVisibleRole(role)}>{roleLabels[role]}</button>)}
+            {data.user.roles.map((role) => <button key={role} type="button" role="tab" aria-selected={role === visibleRole} className={role === visibleRole ? "active" : ""} onClick={() => switchRole(role)}>{roleLabels[role]}</button>)}
           </div>
           <div className="identity"><span>{data.user.name}</span><button className="text-button" onClick={() => void signOut()}>Abmelden</button></div>
         </div>
       </header>
-      {previewRole && <div className="role-preview-banner" role="status">Vorschau: {roleLabels[previewRole]} · Schreibzugriffe sind serverseitig gesperrt.</div>}
       {message && <Notice className="app-notice" message={message} onDismiss={() => setMessage("")} />}
       {tab !== "overview" && <div className="menu-context"><button type="button" className="text-button" onClick={() => openTab("overview")}>← Hauptmenü</button><span>{currentAction?.title}</span></div>}
 
@@ -444,18 +438,18 @@ export function Dashboard() {
         {!isMember && !isGuest && lowStock.length > 0 && <section className="panel alert"><h2>Nachbestellung im Blick</h2>{lowStock.map((item) => <p key={item.id}>{item.name}: noch <b>{formatStockQuantity(item.onHand, item)}</b>; nachbestellen ab {formatStockQuantity(item.reorderLevel, item)}.</p>)}</section>}
       </section>}
 
-      {isAdmin && tab === "inventory" && <section className="content"><section className="two-column"><section className="panel"><h1>Inventarartikel hinzufügen</h1><form onSubmit={(event) => void submit(event, "/api/inventory", (form) => ({ name: value(form, "name"), category: value(form, "category"), unit: value(form, "unit"), packageSize: Number(value(form, "packageSize")), reorderLevel: Number(value(form, "reorderLevel")), priceCents: Math.round(Number(value(form, "publicPrice")) * 100), helperPriceCents: Math.round(Number(value(form, "helperPrice")) * 100), guestPriceCents: Math.round(Number(value(form, "guestPrice")) * 100) }))}><Field name="name" label="Name" /><Field name="category" label="Kategorie" /><Field name="unit" label="Einheit" initial="Flasche" /><Field name="packageSize" label="Gebindegröße (Einheiten je Gebinde)" type="number" initial="1" min="1" /><Field name="reorderLevel" label="Meldebestand (Einheiten)" type="number" initial="0" min="0" /><Field name="publicPrice" label="Regulärer Preis (EUR)" type="number" step="0.01" initial="0" min="0" /><Field name="helperPrice" label="Helferpreis (EUR)" type="number" step="0.01" initial="0" min="0" /><Field name="guestPrice" label="Gastpreis (EUR)" type="number" step="0.01" initial="0" min="0" /><button className="primary">Artikel hinzufügen</button></form></section><EditableInventoryCatalog items={data.inventory} request={request} setMessage={setMessage} onUpdated={refresh} /></section><PendingInventoryApprovals items={data.pendingInventoryItems ?? []} request={request} setMessage={setMessage} onApproved={refresh} /></section>}
+      {isAdmin && tab === "inventory" && <section className="content"><section className="two-column"><section className="panel"><h1>Inventarartikel hinzufügen</h1><form onSubmit={(event) => void submit(event, "/api/inventory", (form) => ({ name: value(form, "name"), category: value(form, "category"), unit: value(form, "unit"), packageSize: Number(value(form, "packageSize")), reorderLevel: Number(value(form, "reorderLevel")), priceCents: Math.round(Number(value(form, "publicPrice")) * 100), helperPriceCents: Math.round(Number(value(form, "helperPrice")) * 100), guestPriceCents: Math.round(Number(value(form, "guestPrice")) * 100), trackInventory: checked(form, "trackInventory"), showInMenu: checked(form, "showInMenu") }))}><Field name="name" label="Name" /><Field name="category" label="Kategorie" /><Field name="unit" label="Einheit" initial="Flasche" /><Field name="packageSize" label="Gebindegröße (Einheiten je Gebinde)" type="number" initial="1" min="1" /><Field name="reorderLevel" label="Meldebestand (Einheiten)" type="number" initial="0" min="0" /><Field name="publicPrice" label="Regulärer Preis (EUR)" type="number" step="0.01" initial="0" min="0" /><Field name="helperPrice" label="Helferpreis (EUR)" type="number" step="0.01" initial="0" min="0" /><Field name="guestPrice" label="Gastpreis (EUR)" type="number" step="0.01" initial="0" min="0" /><InventoryModeFields /><button className="primary">Artikel hinzufügen</button></form></section><EditableInventoryCatalog items={data.inventory} request={request} setMessage={setMessage} onUpdated={refresh} /></section><PendingInventoryApprovals items={data.pendingInventoryItems ?? []} request={request} setMessage={setMessage} onApproved={refresh} /></section>}
       {isAdmin && tab === "users" && <section className="content two-column"><section className="panel"><h1>Mitglied hinzufügen</h1><form onSubmit={(event) => void submit(event, "/api/users", (form) => ({ name: value(form, "name"), email: value(form, "email"), roles: new FormData(form).getAll("roles").map(String), priceMode: value(form, "priceMode"), password: value(form, "password") }))}><Field name="name" label="Name" /><Field name="email" label="E-Mail" type="email" autoComplete="email" /><Field name="password" label="Startpasswort (mindestens 12 Zeichen)" type="password" autoComplete="new-password" /><RoleSelection /><PriceModeSelect name="priceMode" /><button className="primary">Konto anlegen</button></form></section><EditableUserList users={data.users ?? []} currentUserId={data.user.id} request={request} setMessage={setMessage} onUpdated={refresh} /></section>}
       {isAdmin && tab === "pricing" && <><PricingAdministration settings={data.barSettings ?? { isOfficiallyOpen: false, updatedAt: "" }} users={data.users ?? []} request={request} setMessage={setMessage} onUpdated={refresh} /><DailySpecialEditor settings={data.barSettings ?? { isOfficiallyOpen: false, updatedAt: "" }} request={request} setMessage={setMessage} onUpdated={refresh} /></>}
       {isAdmin && tab === "recaps" && <EventRecapAdministration events={data.events ?? []} recaps={data.eventRecaps ?? []} request={request} setMessage={setMessage} onUpdated={refresh} />}
       {isAdmin && tab === "ledgers" && <EventLedgerAdministration events={data.events ?? []} ledgers={data.eventLedgers ?? []} request={request} setMessage={setMessage} onUpdated={refresh} />}
       {isAdmin && tab === "reset" && <ResetDataPanel request={request} setMessage={setMessage} onReset={refresh} />}
 
-      {isManager && tab === "count" && <section className="content"><section className="panel"><h1>Bestandszählung abschließen</h1><p className="muted">Zähle volle Gebinde und einzelne Reste. Die App speichert daraus die Gesamtmenge in Einheiten als unveränderbare Grundlage für Auswertungen.</p><form onSubmit={(event) => void submit(event, "/api/counts", (form) => ({ label: value(form, "label"), notes: value(form, "notes"), lines: data.inventory.map((item) => { const count = countValues[item.id] ?? { packages: 0, units: 0 }; return { itemId: item.id, quantity: count.packages * item.packageSize + count.units }; }) }))}><Field name="label" label="Name der Zählung" initial={`Zählung ${new Date().toLocaleDateString("de-DE")}`} /><label>Notizen<textarea name="notes" rows={2} /></label><div className="count-grid">{data.inventory.map((item) => { const count = countValues[item.id] ?? { packages: 0, units: 0 }; return <div className="count-item" key={item.id}><b>{item.name}</b><small>{item.packageSize === 1 ? "Wird einzeln gezählt" : `${item.packageSize} ${item.unit} je Gebinde`}</small><div className="count-inputs">{item.packageSize > 1 && <label>Volle Gebinde<input type="number" min="0" value={count.packages} onChange={(event) => updateCountValue(item, { packages: Number(event.target.value) })} /></label>}<label>{item.packageSize > 1 ? `Einzelne ${item.unit}` : item.unit}<input type="number" min="0" max={item.packageSize > 1 ? item.packageSize - 1 : undefined} value={count.units} onChange={(event) => updateCountValue(item, { units: Number(event.target.value) })} /></label></div><small>Gesamt: {formatStockQuantity(count.packages * item.packageSize + count.units, item)}</small></div>; })}</div><button className="primary">Zählung abschließen</button></form></section></section>}
+      {isManager && tab === "count" && <section className="content"><section className="panel"><h1>Bestandszählung abschließen</h1><p className="muted">Zähle volle Gebinde und einzelne Reste. Die App speichert daraus die Gesamtmenge in Einheiten als unveränderbare Grundlage für Auswertungen.</p><form onSubmit={(event) => void submit(event, "/api/counts", (form) => ({ label: value(form, "label"), notes: value(form, "notes"), lines: trackedInventory.map((item) => { const count = countValues[item.id] ?? { packages: 0, units: 0 }; return { itemId: item.id, quantity: count.packages * item.packageSize + count.units }; }) }))}><Field name="label" label="Name der Zählung" initial={`Zählung ${new Date().toLocaleDateString("de-DE")}`} /><label>Notizen<textarea name="notes" rows={2} /></label><div className="count-grid">{trackedInventory.map((item) => { const count = countValues[item.id] ?? { packages: 0, units: 0 }; return <div className="count-item" key={item.id}><b>{item.name}</b><small>{item.packageSize === 1 ? "Wird einzeln gezählt" : `${item.packageSize} ${item.unit} je Gebinde`}</small><div className="count-inputs">{item.packageSize > 1 && <label>Volle Gebinde<input type="number" min="0" value={count.packages} onChange={(event) => updateCountValue(item, { packages: Number(event.target.value) })} /></label>}<label>{item.packageSize > 1 ? `Einzelne ${item.unit}` : item.unit}<input type="number" min="0" max={item.packageSize > 1 ? item.packageSize - 1 : undefined} value={count.units} onChange={(event) => updateCountValue(item, { units: Number(event.target.value) })} /></label></div><small>Gesamt: {formatStockQuantity(count.packages * item.packageSize + count.units, item)}</small></div>; })}</div><button className="primary">Zählung abschließen</button></form></section></section>}
       {canManageOps && tab === "events" && <EventManagement events={data.events ?? []} request={request} setMessage={setMessage} onUpdated={refresh} />}
       {isManager && tab === "notes" && <NotesBoard notes={data.notes ?? []} events={data.events ?? []} canManage request={request} setMessage={setMessage} onUpdated={refresh} />}
-      {isManager && tab === "shopping" && <section className="content two-column"><section className="panel"><h1>Einkaufsliste erstellen</h1><form onSubmit={(event) => void submit(event, "/api/shopping-lists", (form) => { const itemId = value(form, "itemId"); const item = data.inventory.find((candidate) => candidate.id === itemId); return { title: value(form, "title"), items: [shoppingSource === "inventory" ? { itemId, name: item?.name ?? "", quantity: Number(value(form, "quantity")) } : { name: value(form, "newItemName"), quantity: Number(value(form, "quantity")) }] }; })}><Field name="title" label="Name der Liste" initial="Neue Nachbestellung" /><fieldset className="shopping-source"><legend>Artikelquelle</legend><label><input type="radio" checked={shoppingSource === "inventory"} onChange={() => setShoppingSource("inventory")} />Aus Inventar auswählen</label><label><input type="radio" checked={shoppingSource === "new"} onChange={() => setShoppingSource("new")} />Neuen Artikel eingeben</label></fieldset>{shoppingSource === "inventory" ? <label>Inventarartikel<select name="itemId">{data.inventory.map((item) => <option value={item.id} key={item.id}>{item.name}</option>)}</select></label> : <><Field name="newItemName" label="Neuer Artikel" /><p className="muted">Der Artikel erscheint erst nach Freigabe durch die Administration in der Inventur.</p></>}<Field name="quantity" label="Menge" type="number" initial="1" /><button className="primary">Liste erstellen</button></form></section><ShoppingLists lists={data.shoppingLists ?? []} request={request} setMessage={setMessage} onUpdated={refresh} /></section>}
-      {isManager && tab === "bills" && <section className="content two-column"><section className="panel"><h1>Rechnung erstellen</h1><form onSubmit={(event) => void submit(event, "/api/bills", (form) => ({ recipientId: value(form, "recipientId"), dueAt: new Date(`${value(form, "dueDate")}T12:00:00.000Z`).toISOString(), lines: [{ itemId: value(form, "itemId"), quantity: Number(value(form, "quantity")) }] }))}><label>Mitglied<select name="recipientId">{(data.billRecipients ?? []).map((user) => <option key={user.id} value={user.id}>{user.name}</option>)}</select></label><label>Artikel<select name="itemId">{data.inventory.map((item) => <option value={item.id} key={item.id}>{item.name} — regulär {formatCurrency(item.priceCents)}, Helfer {formatCurrency(item.helperPriceCents)}</option>)}</select></label><p className="muted">Der Rechnungspreis wird beim Erstellen anhand der Preisregel des Mitglieds und des aktuellen Betriebsmodus festgelegt.</p><Field name="quantity" label="Menge" type="number" initial="1" /><Field name="dueDate" label="Fällig am" type="date" initial={new Date(Date.now() + 12096e5).toISOString().slice(0, 10)} /><button className="primary">Rechnung ausstellen</button></form></section><section className="panel"><h2>Letzte Rechnungen</h2>{(data.bills ?? []).map((bill) => <div className="row" key={bill.id}><span><b>{bill.recipient.name}</b><small>{bill.lines.map((line) => `${line.quantity}× ${line.description}`).join(", ")}</small></span><b>{formatCurrency(bill.totalCents)}</b></div>)}</section></section>}
+      {isManager && tab === "shopping" && <section className="content two-column"><section className="panel"><h1>Einkaufsliste erstellen</h1><form onSubmit={(event) => void submit(event, "/api/shopping-lists", (form) => { const itemId = value(form, "itemId"); const item = trackedInventory.find((candidate) => candidate.id === itemId); return { title: value(form, "title"), items: [shoppingSource === "inventory" ? { itemId, name: item?.name ?? "", quantity: Number(value(form, "quantity")) } : { name: value(form, "newItemName"), quantity: Number(value(form, "quantity")) }] }; })}><Field name="title" label="Name der Liste" initial="Neue Nachbestellung" /><fieldset className="shopping-source"><legend>Artikelquelle</legend><label><input type="radio" checked={shoppingSource === "inventory"} onChange={() => setShoppingSource("inventory")} />Aus Inventar auswählen</label><label><input type="radio" checked={shoppingSource === "new"} onChange={() => setShoppingSource("new")} />Neuen Artikel eingeben</label></fieldset>{shoppingSource === "inventory" ? <label>Inventarartikel<select name="itemId">{trackedInventory.map((item) => <option value={item.id} key={item.id}>{item.name}</option>)}</select></label> : <><Field name="newItemName" label="Neuer Artikel" /><p className="muted">Der Artikel erscheint erst nach Freigabe durch die Administration in der Inventur.</p></>}<Field name="quantity" label="Menge" type="number" initial="1" /><button className="primary">Liste erstellen</button></form></section><ShoppingLists lists={data.shoppingLists ?? []} request={request} setMessage={setMessage} onUpdated={refresh} /></section>}
+      {isManager && tab === "bills" && <section className="content two-column"><section className="panel"><h1>Rechnung erstellen</h1><form onSubmit={(event) => void submit(event, "/api/bills", (form) => ({ recipientId: value(form, "recipientId"), dueAt: new Date(`${value(form, "dueDate")}T12:00:00.000Z`).toISOString(), lines: [{ itemId: value(form, "itemId"), quantity: Number(value(form, "quantity")) }] }))}><label>Mitglied<select name="recipientId">{(data.billRecipients ?? []).map((user) => <option key={user.id} value={user.id}>{user.name}</option>)}</select></label><label>Artikel<select name="itemId">{menuItems.map((item) => <option value={item.id} key={item.id}>{item.name} — regulär {formatCurrency(item.priceCents)}, Helfer {formatCurrency(item.helperPriceCents)}</option>)}</select></label><p className="muted">Der Rechnungspreis wird beim Erstellen anhand der Preisregel des Mitglieds und des aktuellen Betriebsmodus festgelegt.</p><Field name="quantity" label="Menge" type="number" initial="1" /><Field name="dueDate" label="Fällig am" type="date" initial={new Date(Date.now() + 12096e5).toISOString().slice(0, 10)} /><button className="primary">Rechnung ausstellen</button></form></section><section className="panel"><h2>Letzte Rechnungen</h2>{(data.bills ?? []).map((bill) => <div className="row" key={bill.id}><span><b>{bill.recipient.name}</b><small>{bill.lines.map((line) => `${line.quantity}× ${line.description}`).join(", ")}</small></span><b>{formatCurrency(bill.totalCents)}</b></div>)}</section></section>}
       {isManager && tab === "allocations" && <CostAllocationPanel recipients={data.billRecipients ?? []} allocations={data.allocations ?? []} request={request} setMessage={setMessage} onUpdated={refresh} />}
       {isManager && tab === "corrections" && <CorrectionInbox corrections={data.correctionRequests ?? []} request={request} setMessage={setMessage} onUpdated={refresh} />}
       {isManager && tab === "reports" && <SalesReport counts={data.counts ?? []} request={request} setMessage={setMessage} />}
@@ -463,8 +457,8 @@ export function Dashboard() {
       {!canManageOps && (isMember || isGuest) && tab === "events" && <EventBoard events={data.events ?? []} request={request} setMessage={setMessage} onUpdated={refresh} canApply={!isGuest} />}
       {isMember && tab === "notes" && <NotesBoard notes={data.notes ?? []} events={data.events ?? []} canManage={false} request={request} setMessage={setMessage} onUpdated={refresh} />}
       {tab === "social" && <SocialWall posts={data.socialPosts ?? []} currentUserId={data.user.id} canSubmit={isAdmin || isManager || isMember || isGuest} canComment={!isGuest} canModerate={isAdmin} isGuest={isGuest} request={request} setMessage={setMessage} onUpdated={refresh} />}
-      {isGuest && tab === "menu" && <section className="content two-column"><section className="panel"><h1>Getränkekarte</h1><p className="muted">Aktive Getränke und aktuelle Gastpreise.</p><GuestDrinkMenu items={data.inventory} /></section><section className="panel"><h2>Tagesangebot</h2>{data.dailySpecial ? <><b>{data.dailySpecial.title}</b><p>{data.dailySpecial.description}</p><strong className="guest-special-price">{formatCurrency(data.dailySpecial.priceCents)}</strong></> : <p className="muted">Heute gibt es kein aktives Tagesangebot.</p>}</section></section>}
-      {isMember && tab === "consume" && <section className="content"><section className="panel"><h1>Getränk eintragen</h1><p className="muted">Der Eintrag wird deinem Konto zugeordnet und kann in die nächste Rechnung übernommen werden.</p><form onSubmit={(event) => void submit(event, "/api/consumptions", (form) => ({ itemId: value(form, "itemId"), quantity: Number(value(form, "quantity")) }))}><label>Was hattest du?<select name="itemId">{data.inventory.map((item) => <option value={item.id} key={item.id}>{item.name} — {formatCurrency(item.effectivePriceCents)}</option>)}</select></label><Field name="quantity" label="Menge" type="number" initial="1" /><button className="primary">Zu meinem Konto hinzufügen</button></form></section><RecentConsumptions consumptions={data.recentConsumptions ?? []} request={request} setMessage={setMessage} onUpdated={refresh} /><CorrectionRequestPanel consumptions={data.correctionCandidates ?? []} corrections={data.correctionRequests ?? []} request={request} setMessage={setMessage} onUpdated={refresh} /></section>}
+      {isGuest && tab === "menu" && <section className="content two-column"><section className="panel"><h1>Getränkekarte</h1><p className="muted">Aktive Getränke und aktuelle Gastpreise.</p><GuestDrinkMenu items={menuItems} /></section><section className="panel"><h2>Tagesangebot</h2>{data.dailySpecial ? <><b>{data.dailySpecial.title}</b><p>{data.dailySpecial.description}</p><strong className="guest-special-price">{formatCurrency(data.dailySpecial.priceCents)}</strong></> : <p className="muted">Heute gibt es kein aktives Tagesangebot.</p>}</section></section>}
+      {isMember && tab === "consume" && <section className="content"><section className="panel"><h1>Getränk eintragen</h1><p className="muted">Der Eintrag wird deinem Konto zugeordnet und kann in die nächste Rechnung übernommen werden.</p><form onSubmit={(event) => void submit(event, "/api/consumptions", (form) => ({ itemId: value(form, "itemId"), quantity: Number(value(form, "quantity")) }))}><label>Was hattest du?<select name="itemId">{menuItems.map((item) => <option value={item.id} key={item.id}>{item.name} — {formatCurrency(item.effectivePriceCents)}</option>)}</select></label><Field name="quantity" label="Menge" type="number" initial="1" /><button className="primary">Zu meinem Konto hinzufügen</button></form></section><RecentConsumptions consumptions={data.recentConsumptions ?? []} request={request} setMessage={setMessage} onUpdated={refresh} /><CorrectionRequestPanel consumptions={data.correctionCandidates ?? []} corrections={data.correctionRequests ?? []} request={request} setMessage={setMessage} onUpdated={refresh} /></section>}
     </main>
   );
 }
@@ -474,6 +468,16 @@ function Notice({ message, className, onDismiss }: { message: string; className?
   return <div className={`notice${className ? ` ${className}` : ""}`} role="status"><span>{message}</span><button type="button" className="notice-close" onClick={onDismiss} aria-label="Hinweis schließen">×</button></div>;
 }
 function Field({ name, label, type = "text", initial, step, min, autoComplete, required = true }: { name: string; label: string; type?: string; initial?: string; step?: string; min?: string; autoComplete?: string; required?: boolean }) { return <label>{label}<input name={name} type={type} defaultValue={initial} step={step} min={min} autoComplete={autoComplete} required={required} /></label>; }
+function checked(form: HTMLFormElement, name: string) { return new FormData(form).get(name) === "on"; }
+function InventoryModeFields({ item }: { item?: Pick<Item, "trackInventory" | "showInMenu"> }) {
+  return <fieldset className="inventory-mode-fields">
+    <legend>Artikelmodus</legend>
+    <label className="checkbox-label"><input name="trackInventory" type="checkbox" defaultChecked={item?.trackInventory !== false} />Im Inventar führen</label>
+    <small className="muted">Bestand zählen, Meldebestand prüfen und für Nachbestellungen anbieten.</small>
+    <label className="checkbox-label"><input name="showInMenu" type="checkbox" defaultChecked={item?.showInMenu !== false} />Auf der Getränkekarte anbieten</label>
+    <small className="muted">Für Mitglieder auswählbar sowie in der Gast-Getränkekarte und auf Rechnungen verfügbar.</small>
+  </fieldset>;
+}
 function RoleSelection({ selectedRoles = ["USER"] }: { selectedRoles?: Role[] }) { return <fieldset className="role-selection"><legend>Rollen</legend><p className="muted">Rollen sind additiv. Administration erhält automatisch auch Barleitung und Mitglied.</p>{availableRoles.map((role) => <label key={role}><input name="roles" type="checkbox" value={role} defaultChecked={selectedRoles.includes(role)} />{roleLabels[role]}</label>)}</fieldset>; }
 function EditableUserList({ users, currentUserId, request, setMessage, onUpdated }: { users: User[]; currentUserId: string; request: (path: string, init?: RequestInit) => Promise<unknown>; setMessage: (value: string) => void; onUpdated: () => Promise<void> }) {
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -782,6 +786,8 @@ function EditableInventoryCatalog({ items, request, setMessage, onUpdated }: { i
           priceCents: Math.round(Number(value(form, "publicPrice")) * 100),
           helperPriceCents: Math.round(Number(value(form, "helperPrice")) * 100),
           guestPriceCents: Math.round(Number(value(form, "guestPrice")) * 100),
+          trackInventory: checked(form, "trackInventory"),
+          showInMenu: checked(form, "showInMenu"),
         }),
       });
       setEditingId(null);
@@ -801,7 +807,7 @@ function EditableInventoryCatalog({ items, request, setMessage, onUpdated }: { i
     }
   };
 
-  return <section className="panel"><h2>Aktueller Katalog</h2><p className="muted">Artikel lassen sich direkt bearbeiten. Änderungen gelten für künftige Zählungen und Rechnungen.</p><div className="editable-inventory">{items.map((item) => editingId === item.id ? <form className="inventory-edit-form" key={item.id} onSubmit={(event) => void update(event, item)}><div className="edit-heading"><b>{item.name} bearbeiten</b><button type="button" className="text-button" onClick={() => setEditingId(null)}>Abbrechen</button></div><div className="approval-fields"><Field name="name" label="Name" initial={item.name} /><Field name="category" label="Kategorie" initial={item.category} /><Field name="unit" label="Einheit" initial={item.unit} /><Field name="packageSize" label="Gebindegröße (Einheiten je Gebinde)" type="number" initial={String(item.packageSize)} min="1" /><Field name="reorderLevel" label="Meldebestand (Einheiten)" type="number" initial={String(item.reorderLevel)} min="0" /><Field name="publicPrice" label="Regulärer Preis (EUR)" type="number" step="0.01" initial={(item.priceCents / 100).toFixed(2)} min="0" /><Field name="helperPrice" label="Helferpreis (EUR)" type="number" step="0.01" initial={(item.helperPriceCents / 100).toFixed(2)} min="0" /><Field name="guestPrice" label="Gastpreis (EUR)" type="number" step="0.01" initial={(item.guestPriceCents / 100).toFixed(2)} min="0" /></div><button className="primary">Änderungen speichern</button></form> : <div className="editable-inventory-row" key={item.id}><span><b>{item.name}</b><small>{item.category} · {item.packageSize} {item.unit} je Gebinde · Meldebestand: {formatStockQuantity(item.reorderLevel, item)}</small></span><span className="catalog-actions"><b>Regulär: {formatCurrency(item.priceCents)}</b><small>Helfer: {formatCurrency(item.helperPriceCents)}</small><small>Gast: {formatCurrency(item.guestPriceCents)}</small><button type="button" className="text-button" onClick={() => setEditingId(item.id)}>Bearbeiten</button><button type="button" className="text-button danger-action" onClick={() => void retire(item)}>Ausmustern</button></span></div>)}</div></section>;
+  return <section className="panel"><h2>Aktueller Katalog</h2><p className="muted">Artikel lassen sich direkt bearbeiten. Änderungen gelten für künftige Zählungen und Rechnungen.</p><div className="editable-inventory">{items.map((item) => editingId === item.id ? <form className="inventory-edit-form" key={item.id} onSubmit={(event) => void update(event, item)}><div className="edit-heading"><b>{item.name} bearbeiten</b><button type="button" className="text-button" onClick={() => setEditingId(null)}>Abbrechen</button></div><div className="approval-fields"><Field name="name" label="Name" initial={item.name} /><Field name="category" label="Kategorie" initial={item.category} /><Field name="unit" label="Einheit" initial={item.unit} /><Field name="packageSize" label="Gebindegröße (Einheiten je Gebinde)" type="number" initial={String(item.packageSize)} min="1" /><Field name="reorderLevel" label="Meldebestand (Einheiten)" type="number" initial={String(item.reorderLevel)} min="0" /><Field name="publicPrice" label="Regulärer Preis (EUR)" type="number" step="0.01" initial={(item.priceCents / 100).toFixed(2)} min="0" /><Field name="helperPrice" label="Helferpreis (EUR)" type="number" step="0.01" initial={(item.helperPriceCents / 100).toFixed(2)} min="0" /><Field name="guestPrice" label="Gastpreis (EUR)" type="number" step="0.01" initial={(item.guestPriceCents / 100).toFixed(2)} min="0" /></div><InventoryModeFields item={item} /><button className="primary">Änderungen speichern</button></form> : <div className="editable-inventory-row" key={item.id}><span><b>{item.name}</b><small>{item.category} · {item.packageSize} {item.unit} je Gebinde · Meldebestand: {formatStockQuantity(item.reorderLevel, item)} · {itemModeLabel(item)}</small></span><span className="catalog-actions"><b>Regulär: {formatCurrency(item.priceCents)}</b><small>Helfer: {formatCurrency(item.helperPriceCents)}</small><small>Gast: {formatCurrency(item.guestPriceCents)}</small><button type="button" className="text-button" onClick={() => setEditingId(item.id)}>Bearbeiten</button><button type="button" className="text-button danger-action" onClick={() => void retire(item)}>Ausmustern</button></span></div>)}</div></section>;
 }
 function PendingInventoryApprovals({ items, request, setMessage, onApproved }: { items: PendingInventoryItem[]; request: (path: string, init?: RequestInit) => Promise<unknown>; setMessage: (value: string) => void; onApproved: () => Promise<void> }) {
   const saveDraft = async (event: FormEvent<HTMLFormElement>, shoppingItemId: string) => {

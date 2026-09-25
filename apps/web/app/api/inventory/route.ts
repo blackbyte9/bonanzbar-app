@@ -13,6 +13,8 @@ const itemSchema = z.object({
   priceCents: z.coerce.number().int().min(0).max(100000000),
   helperPriceCents: z.coerce.number().int().min(0).max(100000000),
   guestPriceCents: z.coerce.number().int().min(0).max(100000000),
+  trackInventory: z.boolean().default(true),
+  showInMenu: z.boolean().default(true),
 });
 
 export async function POST(request: Request) {

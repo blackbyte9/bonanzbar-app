@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { hasRole, normalizeRoles, resolveUnitPriceCents } from "@bonanzbar/shared";
+import { normalizeRoles, resolveUnitPriceCents } from "@bonanzbar/shared";
 import { authenticate } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 
@@ -12,16 +12,27 @@ function isBerlinToday(value: Date | null): boolean {
 export async function GET(request: Request) {
   const user = await authenticate(request);
   if (user instanceof Response) return user;
-  const canManageEvents = hasRole(user.roles, "MANAGER");
-  const canModerateSocial = hasRole(user.roles, "ADMIN");
-  const isGuestOnly = user.roles.length === 1 && user.roles[0] === "GUEST";
+  const requestedVisibleRole = request.headers.get("x-bonanzbar-visible-role");
+  const visibleRole = requestedVisibleRole && user.roles.includes(requestedVisibleRole as (typeof user.roles)[number])
+    ? requestedVisibleRole
+    : user.roles[0] ?? "USER";
+  const isAdminView = visibleRole === "ADMIN";
+  const isManagerView = visibleRole === "MANAGER";
+  const isMemberView = visibleRole === "USER";
+  const isGuestView = visibleRole === "GUEST";
+  const isMenuView = isMemberView || isGuestView;
+  const canManageEvents = isAdminView || isManagerView;
+  const canModerateSocial = isAdminView;
 
   const [items, latestCount, barSettings, events, notes, publishedRecaps, socialPosts] = await Promise.all([
-    prisma.inventoryItem.findMany({ where: { active: true }, orderBy: [{ category: "asc" }, { name: "asc" }] }),
+    prisma.inventoryItem.findMany({
+      where: { active: true, ...(isMenuView ? { showInMenu: true } : {}) },
+      orderBy: [{ category: "asc" }, { name: "asc" }],
+    }),
     prisma.stockCount.findFirst({
       where: { status: "FINALIZED" },
       orderBy: { countedAt: "desc" },
-      include: { lines: true },
+      include: { lines: { where: { item: { trackInventory: true } } } },
     }),
     prisma.barSettings.upsert({
       where: { id: "default" },
@@ -67,7 +78,7 @@ export async function GET(request: Request) {
     }),
   ]);
   const quantityByItem = new Map(latestCount?.lines.map((line) => [line.itemId, line.quantity]));
-  const inventory = isGuestOnly
+  const inventory = isGuestView
     ? items.map((item) => ({
         id: item.id,
         name: item.name,
@@ -95,10 +106,10 @@ export async function GET(request: Request) {
         date: barSettings.dailySpecialDate,
       }
       : null,
-    latestCount: isGuestOnly || !latestCount ? null : { id: latestCount.id, label: latestCount.label, countedAt: latestCount.countedAt },
+    latestCount: isMenuView || !latestCount ? null : { id: latestCount.id, label: latestCount.label, countedAt: latestCount.countedAt },
   };
 
-  if (hasRole(user.roles, "ADMIN")) {
+  if (isAdminView) {
     const [databaseUsers, pendingInventoryItems, eventRecaps, eventLedgers] = await Promise.all([
       prisma.user.findMany({ orderBy: { name: "asc" }, select: { id: true, name: true, email: true, roles: true, priceMode: true, active: true } }),
       prisma.shoppingItem.findMany({
@@ -131,7 +142,7 @@ export async function GET(request: Request) {
     const users = databaseUsers.map((databaseUser) => ({ ...databaseUser, roles: normalizeRoles(databaseUser.roles) }));
     Object.assign(result, { users, pendingInventoryItems, barSettings, eventRecaps, eventLedgers });
   }
-  if (hasRole(user.roles, "MANAGER")) {
+  if (isManagerView) {
     const [counts, shoppingLists, bills, databaseUsers, allocations, correctionRequests, handoverTasks] = await Promise.all([
       prisma.stockCount.findMany({ orderBy: { countedAt: "desc" }, take: 8, include: { lines: true } }),
       prisma.shoppingList.findMany({ orderBy: { createdAt: "desc" }, include: { items: true } }),
@@ -166,7 +177,7 @@ export async function GET(request: Request) {
     const billRecipients = databaseUsers.map((databaseUser) => ({ ...databaseUser, roles: normalizeRoles(databaseUser.roles) }));
     Object.assign(result, { counts, shoppingLists, bills, billRecipients, allocations, correctionRequests, handoverTasks });
   }
-  if (hasRole(user.roles, "USER")) {
+  if (isMemberView) {
     const [recentConsumptions, correctionRequests, correctionCandidates, consumptionSummary, openBillSummary] = await Promise.all([
       prisma.consumption.findMany({
         where: { userId: user.id },

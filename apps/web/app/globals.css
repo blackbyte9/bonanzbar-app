@@ -167,6 +167,8 @@ textarea { resize:vertical; }
 .note-actions { display:flex; gap:.7rem; margin-top:.8rem; }
 .checkbox-label { display:flex; align-items:center; gap:.5rem; cursor:pointer; }
 .checkbox-label input { accent-color:var(--accent); width:1rem; height:1rem; padding:0; }
+.inventory-mode-fields { display:grid; gap:.35rem; margin:1rem 0; }
+.inventory-mode-fields small { margin-left:1.5rem; }
 @media (max-width:700px) {
   .auth-shell { grid-template-columns:1fr; }
   .hero { padding:4rem 2rem 2rem; border-right:0; border-bottom:1px solid #5a4323; }
@@ -225,7 +227,6 @@ textarea { resize:vertical; }
 .action-copy small { color:#cfc1ae; font-size:.85rem; line-height:1.35; }
 .action-status { grid-area:status; align-self:start; max-width:9rem; padding:.3rem .5rem; border:1px solid #73502b; border-radius:99px; color:#f6d782; background:#281c12; font-size:.65rem; font-weight:800; letter-spacing:.06em; line-height:1.2; text-align:right; text-transform:uppercase; }
 .public-program-button { display:block; margin-top:1.1rem; }
-.role-preview-banner { margin:1rem 0 -1rem; padding:.65rem .85rem; border:1px solid #b8893f; border-radius:.5rem; color:#ffe3b4; background:#3a2818; font-size:.8rem; }
 .event-links, .public-links { display:flex; flex-wrap:wrap; gap:.65rem; margin-top:.75rem; }
 .event-links a, .public-links a, .social-post > a { color:#f4ca6b; font-size:.8rem; font-weight:bold; text-decoration:underline; }
 .consumption-actions { display:flex; align-items:center; justify-content:flex-end; flex-wrap:wrap; gap:.65rem; text-align:right; }

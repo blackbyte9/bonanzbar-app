@@ -1,0 +1,3 @@
+ALTER TABLE "InventoryItem"
+  ADD COLUMN "trackInventory" BOOLEAN NOT NULL DEFAULT true,
+  ADD COLUMN "showInMenu" BOOLEAN NOT NULL DEFAULT true;

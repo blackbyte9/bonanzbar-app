@@ -21,6 +21,7 @@ test("Demo-Konten haben dieselben effektiven Rollen wie gleich konfigurierte Pro
 
   assert.deepEqual(normalizeRoles(localDemoAccounts.MANAGER.roles), ["MANAGER", "USER"]);
   assert.equal(hasPermission(localDemoAccounts.MANAGER.roles, "consumption:create"), true);
+  assert.equal(hasPermission(localDemoAccounts.ADMIN.roles, "consumption:create"), true);
   assert.equal(hasPermission(localDemoAccounts.GUEST.roles, "consumption:create"), false);
 });
 

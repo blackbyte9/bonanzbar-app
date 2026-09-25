@@ -69,11 +69,11 @@ Die vier Demo-Konten verwenden bei der Passwortanmeldung jeweils `bonanzbar-demo
 
 `npm.cmd test` prüft zusätzlich ohne Datenbankzugriff den Demo-/Produktionsvertrag: Die Demo-Konten müssen dieselben effektiven Rollen und Berechtigungen wie gleich konfigurierte Produktionskonten erhalten; in Production bleibt die Demo-Anmeldung immer deaktiviert.
 
-## Additive Rollen und Vorschau
+## Additive Rollen und Bereiche
 
 Konten können mehrere Rollen gleichzeitig haben. In der Mitgliederverwaltung werden die Rollen per Auswahlfeld kombiniert. Die effektiven Rollen werden serverseitig hierarchisch ergänzt: **Administration** erhält zusätzlich **Barleitung**, **Mitglied** und **Gast**; **Barleitung** erhält zusätzlich **Mitglied**. Dadurch kann die Barleitung auch den eigenen Konsum verwalten, während die Administration neben Inventar, Benutzerkonten und Preisen sämtliche Betriebsfunktionen nutzen kann. **Gast** ist bewusst nicht additiv: Ein reines Gastkonto sieht nur die Getränkekarte und kann keine Konsumeinträge oder Betriebsdaten schreiben.
 
-Die Bereiche **Administration**, **Barleitung**, **Mitglied** und **Gast** bleiben in der Oberfläche getrennt. Im Header kann ein Konto mit mehreren Rollen zwischen seinen zugewiesenen Bereichen wechseln; Navigation und Übersicht zeigen anschließend nur die Funktionen der gewählten Rolle. Die serverseitige Berechtigungsprüfung bleibt davon unabhängig und prüft weiterhin alle zugewiesenen Rollen. Eine Rollen-Vorschau im Administrationsbereich setzt zusätzlich einen Request-Header; die API lehnt damit jeden schreibenden Request mit `403` ab. Sie ist nur eine sichere UI-Vorschau und ersetzt keine Berechtigungsprüfung.
+Die Bereiche **Administration**, **Barleitung**, **Mitglied** und **Gast** bleiben in der Oberfläche getrennt. Im Header kann ein Konto mit mehreren Rollen zwischen seinen zugewiesenen Bereichen wechseln; Navigation und Übersicht zeigen anschließend nur die Funktionen der gewählten Rolle. Der Wechsel sperrt keine Änderungen: Ein Administrationskonto bleibt beispielsweise im Mitgliederbereich ein berechtigtes Mitglied und kann dort Konsumeinträge erfassen. Die serverseitige Berechtigungsprüfung prüft weiterhin die tatsächlich zugewiesenen additiven Rollen, nicht die gerade gewählte Bereichsansicht.
 
 In der Administrationsansicht öffnet ein Klick auf einen Eintrag der Mitgliederliste dessen Bearbeitungsformular. Name, E-Mail-Adresse, Passwort, Rollen, Preisregel und Kontostatus können dort aktualisiert werden.
 
@@ -190,6 +190,17 @@ Jeder Inventarartikel hat eine **Gebindegröße**: die Anzahl einzelner Einheite
 
 Bei einer Bestandszählung werden für Artikel mit Gebindegröße größer als `1` volle Gebinde und einzelne Restmengen getrennt eingetragen. Die Anwendung speichert daraus ausschließlich die Gesamtzahl einzelner Einheiten. Damit bleiben Verbrauch, Rechnungen und Verkaufsberichte korrekt, auch wenn die Gebindegröße später angepasst wird. Bestehende Artikel und Zählungen werden mit Gebindegröße `1` weitergeführt.
 
+## Inventar und Getränkekarte trennen
+
+Jeder Inventarartikel besitzt zwei standardmäßig aktivierte Schalter:
+
+- **Im Inventar führen** (`trackInventory`): Der Artikel erscheint in Bestandszählungen, Meldebeständen, Nachbestellungen und bestandsbasierten Verkaufsberichten.
+- **Auf der Getränkekarte anbieten** (`showInMenu`): Der Artikel ist für Mitglieder beim Getränkestrich auswählbar und erscheint mit dem Gastpreis in der Getränkekarte sowie bei neuen Rechnungen.
+
+Damit kann beispielsweise **Gin** als Zutat inventargeführt, aber nicht direkt verkauft werden. **Gin Tonic** ist dagegen ein verkäuflicher Longdrink, der auf den Karten erscheint, ohne selbst gezählt oder nachbestellt zu werden. Bestehende Artikel behalten durch die Migration beide Schalter aktiviert und funktionieren damit weiterhin wie bisher.
+
+Die Trennung wird nicht nur in der Oberfläche umgesetzt: Die API verweigert Bestandszählungen und bekannte Einkaufslistenpositionen für nicht inventargeführte Artikel sowie Konsumeinträge und neue Rechnungszeilen für nicht sichtbare Menüartikel. Reine Mitglieds- und Gastansichten erhalten vom Bootstrap-Endpunkt keine ausgeblendeten Menüartikel; Gastantworten enthalten weiterhin ausschließlich Name, Kategorie, Kennung und den wirksamen Gastpreis. Administration und Barleitung sehen für den Betrieb den vollständigen aktiven Katalog.
+
 ## Zusammenführung mit Bonanzbar Online
 
 Die fachlichen Organisationsfunktionen aus [`blackbyte9/bonanzbar-online`](https://github.com/blackbyte9/bonanzbar-online) werden in diese Anwendung überführt. Diese App bleibt die technische Grundlage: Prisma/Neon speichert normalisierte Daten, die bestehende E-Mail-/Passwort-Anmeldung und die additiven Rollen bleiben maßgeblich. Das parallele Supabase-Auth-System und sein einzelnes JSON-Zustandsdokument werden nicht zusätzlich betrieben.
@@ -214,7 +225,7 @@ Die folgenden Erweiterungen bauen darauf auf:
 - Ein gerade erfasster eigener Konsum kann für zehn Sekunden atomar storniert werden; danach bleibt der bestehende Korrekturprozess maßgeblich.
 - Tagesangebot und Gastpreise sind Teil der zentralen Bareinstellungen bzw. des Inventars. Bilddaten werden nicht als Base64 in der Datenbank gespeichert; redaktionelle Bilder sind validierte HTTP(S)-URLs.
 
-Die Migrationen `20260921193000_add_events_and_duties`, `20260921200000_add_bulletin_notes`, `20260921203000_add_allocations_and_corrections` und `20260924170000_add_public_events_and_operations` legen die relationalen Tabellen und Spalten an. Die letzte Migration übernimmt bei bestehenden Artikeln den bisherigen regulären Preis als Startwert für den Gastpreis; vorhandene Artikel werden deshalb nicht versehentlich kostenlos. Führe für jedes Deployment ausschließlich `prisma migrate deploy` bzw. den vorhandenen Build-Befehl aus, niemals `db:seed`.
+Die Migrationen `20260921193000_add_events_and_duties`, `20260921200000_add_bulletin_notes`, `20260921203000_add_allocations_and_corrections`, `20260924170000_add_public_events_and_operations` und `20260925080000_add_inventory_menu_flags` legen die relationalen Tabellen und Spalten an. Die Migration für Inventar und Getränkekarte ergänzt beide Schalter mit dem Standardwert `true`, sodass vorhandene Artikel unverändert weitergezählt und angeboten werden. Führe für jedes Deployment ausschließlich `prisma migrate deploy` bzw. den vorhandenen Build-Befehl aus, niemals `db:seed`.
 
 Für Daten aus einer bereits genutzten `bonanzbar-online`-Supabase-Instanz ist vor einem Import eine fachliche Zuordnung der Mitglieder erforderlich; es werden keine Authentifizierungs- oder Geschäftsdaten automatisch zwischen Datenbanken kopiert.
 
