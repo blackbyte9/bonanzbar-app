@@ -165,7 +165,7 @@ Die API überprüft jede Änderung serverseitig; die Oberfläche ist nur eine Be
 - Das Anlegen von Inventarartikeln und Benutzern erfordert `ADMIN`.
 - Bestandszählungen, Einkaufslisten, Rechnungen, Umlagen, Korrekturentscheidungen und Verkaufsberichte erfordern `MANAGER`.
 - Konsumeinträge verwenden immer die Identität des angemeldeten Benutzers, niemals eine vom Client übermittelte Benutzer-ID.
-- Gastkonten dürfen keine Konsumeinträge, Social-Wall-Beiträge oder sonstige Betriebsdaten erstellen.
+- Gastkonten dürfen keine Konsumeinträge oder sonstige Betriebsdaten erstellen. Social-Wall-Beiträge dürfen sie zur Freigabe einreichen; sie werden erst nach Freigabe durch die Administration für andere sichtbar.
 - Einzelpreise für Rechnungen berechnet der Server anhand des Inventars und der Preisregel; der Client kann Preise nicht manipulieren.
 - Der globale Datenreset ist ausschließlich für `ADMIN` erreichbar und erfordert zusätzlich die wörtliche Bestätigung `reset`.
 - Zod validiert jede Änderungsanfrage und Prisma parametrisiert alle Datenbankzugriffe.
@@ -212,7 +212,7 @@ Die übernommene Grundlage ist das **Veranstaltungsboard mit Dienstbewerbungen**
 - Barleitung bestätigt oder lehnt Bewerbungen ab; die API verhindert eine Bestätigung über die Sollbesetzung hinaus.
 - Barleitung veröffentlicht gemeinsame Notizen, ordnet sie bei Bedarf einer Veranstaltung zu und kann wichtige Hinweise anheften; alle Mitglieder sehen die gleichen Notizen.
 - Barleitung kann gemeinsame Kosten als **Umlage** centgenau gleichmäßig auf alle aktiven Mitglieder verteilen. Pro Anteil wird eine nachvollziehbare offene Rechnung erzeugt; Restcent folgen einer stabilen alphabetischen Reihenfolge.
-- Mitglieder können für eigene offene Konsumeinträge **Korrekturen** anfragen. Die Barleitung beantwortet und schließt diese ab; nur explizit ausgewählte offene Einträge werden als storniert markiert. Bereits ausgestellte Rechnungen bleiben unverändert.
+- Mitglieder können für eigene offene Konsumeinträge **Korrekturen** anfragen. Die Barleitung beantwortet und schließt diese ab; sie gibt dabei die Anzahl der zu stornierenden Getränke an. Teilstornos teilen einen Sammelkonsum revisionssicher in einen stornierten Anteil und einen weiterhin offenen Rest; der stornierte Anteil verschwindet aus der aktiven Drinkliste, bleibt aber im Korrekturverlauf erhalten. Bereits ausgestellte Rechnungen bleiben unverändert.
 - Die Administration kann alle Betriebsdaten nach einer bewussten Bestätigung zurücksetzen. Benutzerkonten, Rollen und die Ersteinrichtungsmarkierung bleiben dabei erhalten.
 
 Die folgenden Erweiterungen bauen darauf auf:

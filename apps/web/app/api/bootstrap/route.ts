@@ -143,7 +143,7 @@ export async function GET(request: Request) {
     Object.assign(result, { users, pendingInventoryItems, barSettings, eventRecaps, eventLedgers });
   }
   if (isManagerView) {
-    const [counts, shoppingLists, bills, databaseUsers, allocations, correctionRequests, handoverTasks] = await Promise.all([
+    const [counts, shoppingLists, bills, databaseUsers, allocations, correctionRequests, openCorrectionConsumptions, handoverTasks] = await Promise.all([
       prisma.stockCount.findMany({ orderBy: { countedAt: "desc" }, take: 8, include: { lines: true } }),
       prisma.shoppingList.findMany({ orderBy: { createdAt: "desc" }, include: { items: true } }),
       prisma.bill.findMany({ orderBy: { issuedAt: "desc" }, include: { recipient: { select: { name: true } }, lines: true }, take: 10 }),
@@ -166,6 +166,11 @@ export async function GET(request: Request) {
           item: { select: { id: true, name: true } },
         },
       }),
+      prisma.consumption.groupBy({
+        by: ["userId", "itemId"],
+        where: { voidedAt: null },
+        _sum: { quantity: true },
+      }),
       prisma.handoverTask.findMany({
         orderBy: [{ status: "asc" }, { priority: "desc" }, { createdAt: "desc" }],
         include: {
@@ -175,12 +180,20 @@ export async function GET(request: Request) {
       }),
     ]);
     const billRecipients = databaseUsers.map((databaseUser) => ({ ...databaseUser, roles: normalizeRoles(databaseUser.roles) }));
-    Object.assign(result, { counts, shoppingLists, bills, billRecipients, allocations, correctionRequests, handoverTasks });
+    const openQuantityByCorrection = new Map(openCorrectionConsumptions.map((consumption) => [
+      `${consumption.userId}:${consumption.itemId}`,
+      consumption._sum.quantity ?? 0,
+    ]));
+    const correctionsWithOpenQuantity = correctionRequests.map((correction) => ({
+      ...correction,
+      openQuantity: openQuantityByCorrection.get(`${correction.userId}:${correction.itemId}`) ?? 0,
+    }));
+    Object.assign(result, { counts, shoppingLists, bills, billRecipients, allocations, correctionRequests: correctionsWithOpenQuantity, handoverTasks });
   }
   if (isMemberView) {
     const [recentConsumptions, correctionRequests, correctionCandidates, consumptionSummary, openBillSummary] = await Promise.all([
       prisma.consumption.findMany({
-        where: { userId: user.id },
+        where: { userId: user.id, voidedAt: null },
         include: { item: true },
         orderBy: { occurredAt: "desc" },
         take: 10,

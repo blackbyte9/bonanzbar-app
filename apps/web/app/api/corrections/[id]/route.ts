@@ -41,17 +41,41 @@ export async function PATCH(request: Request, context: { params: Promise<{ id: s
         const consumptions = await transaction.consumption.findMany({
           where: { userId: correction.userId, itemId: correction.itemId, voidedAt: null, correctionId: null },
           orderBy: { occurredAt: "desc" },
-          select: { id: true },
-          take: input.voidedQuantity,
+          select: { id: true, quantity: true, unitCents: true, occurredAt: true },
         });
-        if (consumptions.length !== input.voidedQuantity) {
-          throw new CorrectionConflictError("Die Anzahl offener Konsumeinträge hat sich geändert.");
+        const availableQuantity = consumptions.reduce((total, consumption) => total + consumption.quantity, 0);
+        if (availableQuantity < input.voidedQuantity) {
+          throw new CorrectionConflictError(`Es sind nur noch ${availableQuantity} offene Getränke verfügbar.`);
         }
-        const voided = await transaction.consumption.updateMany({
-          where: { id: { in: consumptions.map((consumption) => consumption.id) }, voidedAt: null, correctionId: null },
-          data: { voidedAt: new Date(), voidedBy: user.id, correctionId: correction.id },
-        });
-        if (voided.count !== input.voidedQuantity) throw new CorrectionConflictError();
+
+        let remainingQuantity = input.voidedQuantity;
+        for (const consumption of consumptions) {
+          if (remainingQuantity === 0) break;
+          const voidedQuantity = Math.min(consumption.quantity, remainingQuantity);
+          const voided = await transaction.consumption.updateMany({
+            where: { id: consumption.id, quantity: consumption.quantity, voidedAt: null, correctionId: null },
+            data: {
+              quantity: voidedQuantity,
+              voidedAt: new Date(),
+              voidedBy: user.id,
+              correctionId: correction.id,
+            },
+          });
+          if (voided.count !== 1) throw new CorrectionConflictError();
+
+          if (voidedQuantity < consumption.quantity) {
+            await transaction.consumption.create({
+              data: {
+                userId: correction.userId,
+                itemId: correction.itemId,
+                quantity: consumption.quantity - voidedQuantity,
+                unitCents: consumption.unitCents,
+                occurredAt: consumption.occurredAt,
+              },
+            });
+          }
+          remainingQuantity -= voidedQuantity;
+        }
       }
 
       return { kind: "updated" as const };
