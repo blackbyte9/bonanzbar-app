@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { hasRole } from "@bonanzbar/shared";
 import { z } from "zod";
 import { requirePermission } from "@/lib/auth";
 import { jsonError, requestJson } from "@/lib/http";
@@ -12,8 +13,10 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
   try {
     const { id: postId } = await context.params;
     const input = commentSchema.parse(await requestJson(request));
-    const post = await prisma.socialPost.findUnique({ where: { id: postId }, select: { id: true } });
-    if (!post) return NextResponse.json({ error: "Beitrag nicht gefunden." }, { status: 404 });
+    const post = await prisma.socialPost.findUnique({ where: { id: postId }, select: { id: true, approvedAt: true } });
+    if (!post || (!post.approvedAt && !hasRole(user.roles, "ADMIN"))) {
+      return NextResponse.json({ error: "Beitrag nicht gefunden." }, { status: 404 });
+    }
     const comment = await prisma.socialComment.create({
       data: { postId, authorId: user.id, body: input.body },
       include: { author: { select: { id: true, name: true } } },

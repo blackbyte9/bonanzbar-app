@@ -208,7 +208,7 @@ Die folgenden Erweiterungen bauen darauf auf:
 
 - Eine öffentliche Programmseite zeigt veröffentlichte Termine, Bandinformationen, Bild-URLs sowie Ticket- und Video-Links ohne Anmeldung.
 - Rückblicke können erst nach dem Termin veröffentlicht werden. Bilder werden nur bei dokumentierter Fotoeinwilligung eingebunden.
-- Die Social Wall ermöglicht angemeldeten Mitgliedern Beiträge und Kommentare; Autorinnen, Autoren und Administration dürfen Beiträge entsprechend löschen.
+- Die Social Wall ermöglicht Mitgliedern Beiträge und Kommentare. Gäste können eigene Beiträge mit optionaler Bild-URL zur Freigabe einreichen; sie bleiben bis zur Administrationsfreigabe für andere unsichtbar. Autorinnen, Autoren und Administration dürfen Beiträge entsprechend löschen.
 - Barleitung organisiert Übergabeaufgaben mit Status, Priorität und verantwortlicher Person.
 - Die Administration führt pro Veranstaltung ein manuelles Einnahmen-/Ausgabenledger. Ein Abschluss sperrt weitere Buchungen.
 - Ein gerade erfasster eigener Konsum kann für zehn Sekunden atomar storniert werden; danach bleibt der bestehende Korrekturprozess maßgeblich.

@@ -1,4 +1,4 @@
-import { DatabaseEnvironmentName, EventStatus, PriceMode, PrismaClient } from "../generated/prisma-postgres";
+import { DatabaseEnvironmentName, EventStatus, PriceMode, PrismaClient } from "../generated/prisma";
 import { localDemoAccounts } from "../lib/demo-mode";
 import { hashPassword } from "../lib/password";
 
@@ -136,6 +136,8 @@ async function main() {
   await prisma.socialPost.create({
     data: {
       authorId: member.id,
+      approvedAt: new Date("2026-09-01T12:00:00.000Z"),
+      approvedById: admin.id,
       body: "Ich freue mich auf den Herbstabend!",
       comments: { create: { authorId: manager.id, body: "Wir auch - Dienstplan und Einkauf stehen bereit." } },
     },

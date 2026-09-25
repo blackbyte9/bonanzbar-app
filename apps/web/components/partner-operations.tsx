@@ -25,6 +25,7 @@ type SocialPost = {
   id: string;
   body: string;
   imageUrl: string | null;
+  approvedAt: string | null;
   createdAt: string;
   author: { id: string; name: string };
   comments: { id: string; body: string; createdAt: string; author: { id: string; name: string } }[];
@@ -124,11 +125,13 @@ export function EventRecapAdministration({ events, recaps, request, setMessage, 
   return <section className="content two-column"><section className="panel"><h1>Konzertrückblick</h1>{completedEvents.length === 0 ? <p className="muted">Nach der ersten abgeschlossenen Veranstaltung können hier Rückblicke veröffentlicht werden.</p> : <form onSubmit={(event) => void save(event)}><label>Veranstaltung<select name="eventId" value={selectedEventId} onChange={(event) => setSelectedEventId(event.currentTarget.value)}>{completedEvents.map((event) => <option value={event.id} key={event.id}>{event.title} · {date(event.startsAt)}</option>)}</select></label><label>Titel<input name="title" defaultValue={selectedRecap?.title ?? ""} key={`title-${selectedEventId}`} /></label><label>Text<textarea name="body" rows={6} defaultValue={selectedRecap?.body ?? ""} key={`body-${selectedEventId}`} /></label><label>Bild-URLs (maximal 6, eine URL je Zeile)<textarea name="imageUrls" rows={4} defaultValue={selectedRecap?.imageUrls.join("\n") ?? ""} key={`images-${selectedEventId}`} /></label><label className="checkbox-label"><input name="published" type="checkbox" defaultChecked={selectedRecap?.published} key={`published-${selectedEventId}`} />Öffentlich veröffentlichen</label><label className="checkbox-label"><input name="photoConsent" type="checkbox" />Fotoeinwilligung für veröffentlichte Bilder liegt vor</label><button className="primary">Rückblick speichern</button></form>}</section><section className="panel"><h2>Gespeicherte Rückblicke</h2>{recaps.length === 0 ? <p className="muted">Noch keine Rückblicke angelegt.</p> : <div className="recap-list">{recaps.map((recap) => <article className="recap-card" key={recap.id}><span><b>{recap.title}</b><small>{recap.event.title} · {recap.published ? "veröffentlicht" : "Entwurf"}</small></span><p>{recap.body}</p><button type="button" className="text-button danger-action" onClick={() => void remove(recap.id)}>Löschen</button></article>)}</div>}</section></section>;
 }
 
-export function SocialWall({ posts, currentUserId, canWrite, isAdmin, request, setMessage, onUpdated }: {
+export function SocialWall({ posts, currentUserId, canSubmit, canComment, canModerate, isGuest, request, setMessage, onUpdated }: {
   posts: SocialPost[];
   currentUserId: string;
-  canWrite: boolean;
-  isAdmin: boolean;
+  canSubmit: boolean;
+  canComment: boolean;
+  canModerate: boolean;
+  isGuest: boolean;
   request: Request;
   setMessage: Message;
   onUpdated: () => Promise<void>;
@@ -139,7 +142,7 @@ export function SocialWall({ posts, currentUserId, canWrite, isAdmin, request, s
     try {
       await request("/api/social-posts", { method: "POST", body: JSON.stringify({ body: form.get("body"), imageUrl: String(form.get("imageUrl") ?? "").trim() || null }) });
       event.currentTarget.reset();
-      setMessage("Beitrag veröffentlicht.");
+      setMessage(isGuest ? "Beitrag zur Freigabe eingereicht." : "Beitrag veröffentlicht.");
       await onUpdated();
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Beitrag konnte nicht veröffentlicht werden.");
@@ -165,8 +168,17 @@ export function SocialWall({ posts, currentUserId, canWrite, isAdmin, request, s
       setMessage(error instanceof Error ? error.message : "Eintrag konnte nicht gelöscht werden.");
     }
   };
+  const approve = async (postId: string) => {
+    try {
+      await request(`/api/social-posts/${postId}`, { method: "PATCH", body: JSON.stringify({ approved: true }) });
+      setMessage("Gastbeitrag freigegeben.");
+      await onUpdated();
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Gastbeitrag konnte nicht freigegeben werden.");
+    }
+  };
 
-  return <section className="content two-column"><section className="panel social-compose"><h1>Social Wall</h1>{canWrite ? <form onSubmit={(event) => void createPost(event)}><label>Dein Beitrag<textarea name="body" rows={5} required /></label><label>Bild-URL (optional)<input name="imageUrl" type="url" placeholder="https://…" /></label><button className="primary">Beitrag veröffentlichen</button></form> : <p className="muted">Gäste können die Social Wall ansehen, aber keine Beiträge schreiben.</p>}</section><section className="panel"><h2>Aus der Crew</h2>{posts.length === 0 ? <p className="muted">Noch keine Beiträge.</p> : <div className="social-posts">{posts.map((post) => <article className="social-post" key={post.id}><header><span><b>{post.author.name}</b><small>{dateTime(post.createdAt)}</small></span>{(isAdmin || post.author.id === currentUserId) && <button type="button" className="text-button danger-action" onClick={() => void remove(`/api/social-posts/${post.id}`)}>Löschen</button>}</header><p>{post.body}</p>{post.imageUrl && <a href={post.imageUrl} target="_blank" rel="noreferrer">Bild öffnen ↗</a>}<div className="social-comments">{post.comments.map((comment) => <div className="social-comment" key={comment.id}><span><b>{comment.author.name}</b><small>{dateTime(comment.createdAt)}</small><p>{comment.body}</p></span>{(isAdmin || comment.author.id === currentUserId) && <button type="button" className="text-button danger-action" onClick={() => void remove(`/api/social-posts/${post.id}/comments/${comment.id}`)}>Löschen</button>}</div>)}</div>{canWrite && <form className="comment-form" onSubmit={(event) => void comment(event, post.id)}><label>Kommentieren<input name="body" required /></label><button className="secondary">Senden</button></form>}</article>)}</div>}</section></section>;
+  return <section className="content two-column"><section className="panel social-compose"><h1>Social Wall</h1>{canSubmit ? <form onSubmit={(event) => void createPost(event)}><label>Dein Beitrag<textarea name="body" rows={5} required /></label><label>Bild-URL (optional)<input name="imageUrl" type="url" placeholder="https://…" /></label>{isGuest && <p className="muted">Gastbeiträge werden erst nach Freigabe durch die Administration für andere sichtbar.</p>}<button className="primary">{isGuest ? "Zur Freigabe einreichen" : "Beitrag veröffentlichen"}</button></form> : <p className="muted">Für diese Rolle sind keine Beiträge möglich.</p>}</section><section className="panel"><h2>Aus der Crew</h2>{posts.length === 0 ? <p className="muted">Noch keine Beiträge.</p> : <div className="social-posts">{posts.map((post) => <article className="social-post" key={post.id}><header><span><b>{post.author.name}</b><small>{dateTime(post.createdAt)}</small>{!post.approvedAt && <span className="pill">Freigabe ausstehend</span>}</span><span className="social-post-actions">{!post.approvedAt && canModerate && <button type="button" className="secondary" onClick={() => void approve(post.id)}>Freigeben</button>}{(canModerate || post.author.id === currentUserId) && <button type="button" className="text-button danger-action" onClick={() => void remove(`/api/social-posts/${post.id}`)}>Löschen</button>}</span></header><p>{post.body}</p>{post.imageUrl && <a href={post.imageUrl} target="_blank" rel="noreferrer">Bild öffnen ↗</a>}<div className="social-comments">{post.comments.map((comment) => <div className="social-comment" key={comment.id}><span><b>{comment.author.name}</b><small>{dateTime(comment.createdAt)}</small><p>{comment.body}</p></span>{(canModerate || comment.author.id === currentUserId) && <button type="button" className="text-button danger-action" onClick={() => void remove(`/api/social-posts/${post.id}/comments/${comment.id}`)}>Löschen</button>}</div>)}</div>{canComment && <form className="comment-form" onSubmit={(event) => void comment(event, post.id)}><label>Kommentieren<input name="body" required /></label><button className="secondary">Senden</button></form>}</article>)}</div>}</section></section>;
 }
 
 export function HandoverTaskBoard({ tasks, assignees, request, setMessage, onUpdated }: {

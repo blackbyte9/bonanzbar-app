@@ -1,6 +1,6 @@
 generator client {
   provider = "prisma-client-js"
-  output   = "../generated/prisma-postgres"
+  output   = "../generated/prisma"
 }
 
 datasource db {
@@ -89,6 +89,7 @@ model User {
   dutyApplications      EventDutyApplication[]
   correctionRequests    ConsumptionCorrection[] @relation("CorrectionRequester")
   socialPosts           SocialPost[]
+  approvedSocialPosts   SocialPost[]           @relation("SocialPostApprover")
   socialComments        SocialComment[]
   assignedHandoverTasks HandoverTask[]         @relation("HandoverAssignee")
   createdHandoverTasks  HandoverTask[]         @relation("HandoverCreator")
@@ -276,15 +277,19 @@ model EventRecap {
 }
 
 model SocialPost {
-  id        String          @id @default(cuid())
-  authorId  String
-  body      String
-  imageUrl  String?
-  createdAt DateTime        @default(now())
-  updatedAt DateTime        @updatedAt
-  author    User            @relation(fields: [authorId], references: [id], onDelete: Cascade)
-  comments  SocialComment[]
+  id           String          @id @default(cuid())
+  authorId     String
+  approvedById String?
+  body         String
+  imageUrl     String?
+  approvedAt   DateTime?
+  createdAt    DateTime        @default(now())
+  updatedAt    DateTime        @updatedAt
+  author       User            @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  approvedBy   User?           @relation("SocialPostApprover", fields: [approvedById], references: [id], onDelete: SetNull)
+  comments     SocialComment[]
 
+  @@index([approvedAt, createdAt])
   @@index([createdAt])
 }
 

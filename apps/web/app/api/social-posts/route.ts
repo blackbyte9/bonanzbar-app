@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
+import { hasRole } from "@bonanzbar/shared";
 import { z } from "zod";
-import { authenticate, requirePermission } from "@/lib/auth";
+import { authenticate } from "@/lib/auth";
 import { jsonError, requestJson } from "@/lib/http";
 import { prisma } from "@/lib/prisma";
 
@@ -26,7 +27,9 @@ export async function GET(request: Request) {
   const user = await authenticate(request);
   if (user instanceof Response) return user;
   try {
+    const canModerate = hasRole(user.roles, "ADMIN");
     const posts = await prisma.socialPost.findMany({
+      where: canModerate ? {} : { OR: [{ approvedAt: { not: null } }, { authorId: user.id }] },
       orderBy: { createdAt: "desc" },
       take: 50,
       include: postInclude,
@@ -38,12 +41,22 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
-  const user = await requirePermission(request, "social:write");
+  const user = await authenticate(request);
   if (user instanceof Response) return user;
   try {
+    const isGuestOnly = user.roles.length === 1 && user.roles[0] === "GUEST";
+    if (!isGuestOnly && !hasRole(user.roles, "USER")) {
+      return NextResponse.json({ error: "Deine Rolle ist für diese Aktion nicht berechtigt." }, { status: 403 });
+    }
     const input = postSchema.parse(await requestJson(request));
     const post = await prisma.socialPost.create({
-      data: { authorId: user.id, body: input.body, imageUrl: input.imageUrl || null },
+      data: {
+        authorId: user.id,
+        body: input.body,
+        imageUrl: input.imageUrl || null,
+        approvedAt: isGuestOnly ? null : new Date(),
+        approvedById: isGuestOnly ? null : user.id,
+      },
       include: postInclude,
     });
     return NextResponse.json(post, { status: 201 });

@@ -13,6 +13,7 @@ export async function GET(request: Request) {
   const user = await authenticate(request);
   if (user instanceof Response) return user;
   const canManageEvents = hasRole(user.roles, "MANAGER");
+  const canModerateSocial = hasRole(user.roles, "ADMIN");
   const isGuestOnly = user.roles.length === 1 && user.roles[0] === "GUEST";
 
   const [items, latestCount, barSettings, events, notes, publishedRecaps, socialPosts] = await Promise.all([
@@ -53,6 +54,7 @@ export async function GET(request: Request) {
       include: { event: { select: { id: true, title: true, startsAt: true } } },
     }),
     prisma.socialPost.findMany({
+      where: canModerateSocial ? {} : { OR: [{ approvedAt: { not: null } }, { authorId: user.id }] },
       orderBy: { createdAt: "desc" },
       take: 50,
       include: {
