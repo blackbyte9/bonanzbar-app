@@ -69,11 +69,11 @@ Die vier Demo-Konten verwenden bei der Passwortanmeldung jeweils `bonanzbar-demo
 
 `npm.cmd test` prüft zusätzlich ohne Datenbankzugriff den Demo-/Produktionsvertrag: Die Demo-Konten müssen dieselben effektiven Rollen und Berechtigungen wie gleich konfigurierte Produktionskonten erhalten; in Production bleibt die Demo-Anmeldung immer deaktiviert.
 
-## Additive Rollen und Bereiche
+## Additive Rollen im gemeinsamen Hauptmenü
 
 Konten können mehrere Rollen gleichzeitig haben. In der Mitgliederverwaltung werden die Rollen per Auswahlfeld kombiniert. Die effektiven Rollen werden serverseitig hierarchisch ergänzt: **Administration** erhält zusätzlich **Barleitung**, **Mitglied** und **Gast**; **Barleitung** erhält zusätzlich **Mitglied**. Dadurch kann die Barleitung auch den eigenen Konsum verwalten, während die Administration neben Inventar, Benutzerkonten und Preisen sämtliche Betriebsfunktionen nutzen kann. **Gast** ist bewusst nicht additiv: Ein reines Gastkonto sieht nur die Getränkekarte und kann keine Konsumeinträge oder Betriebsdaten schreiben.
 
-Die Bereiche **Administration**, **Barleitung**, **Mitglied** und **Gast** bleiben in der Oberfläche getrennt. Im Header kann ein Konto mit mehreren Rollen zwischen seinen zugewiesenen Bereichen wechseln; Navigation und Übersicht zeigen anschließend nur die Funktionen der gewählten Rolle. Der Wechsel sperrt keine Änderungen: Ein Administrationskonto bleibt beispielsweise im Mitgliederbereich ein berechtigtes Mitglied und kann dort Konsumeinträge erfassen. Die serverseitige Berechtigungsprüfung prüft weiterhin die tatsächlich zugewiesenen additiven Rollen, nicht die gerade gewählte Bereichsansicht.
+Die Oberfläche bündelt alle Funktionen eines Kontos in einem gemeinsamen Hauptmenü. Administration und Barleitung erscheinen dort unter **Verwaltung** beziehungsweise **Betrieb**; Programm, Gemeinschaft und persönliche Funktionen folgen als weitere klar beschriftete Gruppen. Ein Administrationskonto findet damit Inventar, Mitglieder, Betrieb und eigene Getränke ohne Bereichswechsel an einem Ort. Die Getränkekarte mit Gastpreisen bleibt ausschließlich reinen Gastkonten vorbehalten. Die serverseitige Berechtigungsprüfung prüft dabei unverändert die tatsächlich zugewiesenen additiven Rollen.
 
 In der Administrationsansicht öffnet ein Klick auf einen Eintrag der Mitgliederliste dessen Bearbeitungsformular. Name, E-Mail-Adresse, Passwort, Rollen, Preisregel und Kontostatus können dort aktualisiert werden.
 

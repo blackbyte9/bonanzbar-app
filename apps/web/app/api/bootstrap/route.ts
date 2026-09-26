@@ -12,21 +12,17 @@ function isBerlinToday(value: Date | null): boolean {
 export async function GET(request: Request) {
   const user = await authenticate(request);
   if (user instanceof Response) return user;
-  const requestedVisibleRole = request.headers.get("x-bonanzbar-visible-role");
-  const visibleRole = requestedVisibleRole && user.roles.includes(requestedVisibleRole as (typeof user.roles)[number])
-    ? requestedVisibleRole
-    : user.roles[0] ?? "USER";
-  const isAdminView = visibleRole === "ADMIN";
-  const isManagerView = visibleRole === "MANAGER";
-  const isMemberView = visibleRole === "USER";
-  const isGuestView = visibleRole === "GUEST";
-  const isMenuView = isMemberView || isGuestView;
-  const canManageEvents = isAdminView || isManagerView;
-  const canModerateSocial = isAdminView;
+  const isAdmin = user.roles.includes("ADMIN");
+  const isManager = user.roles.includes("MANAGER");
+  const isMember = user.roles.includes("USER");
+  const isGuestOnly = user.roles.includes("GUEST") && !isMember;
+  const isMenuOnly = !isAdmin && !isManager;
+  const canManageEvents = isAdmin || isManager;
+  const canModerateSocial = isAdmin;
 
   const [items, latestCount, barSettings, events, notes, publishedRecaps, socialPosts] = await Promise.all([
     prisma.inventoryItem.findMany({
-      where: { active: true, ...(isMenuView ? { showInMenu: true } : {}) },
+      where: { active: true, ...(isMenuOnly ? { showInMenu: true } : {}) },
       orderBy: [{ category: "asc" }, { name: "asc" }],
     }),
     prisma.stockCount.findFirst({
@@ -78,11 +74,12 @@ export async function GET(request: Request) {
     }),
   ]);
   const quantityByItem = new Map(latestCount?.lines.map((line) => [line.itemId, line.quantity]));
-  const inventory = isGuestView
+  const inventory = isGuestOnly
     ? items.map((item) => ({
         id: item.id,
         name: item.name,
         category: item.category,
+        guestPriceCents: item.guestPriceCents,
         effectivePriceCents: resolveUnitPriceCents(item, user.priceMode, barSettings.isOfficiallyOpen),
       }))
     : items.map((item) => ({
@@ -106,10 +103,10 @@ export async function GET(request: Request) {
         date: barSettings.dailySpecialDate,
       }
       : null,
-    latestCount: isMenuView || !latestCount ? null : { id: latestCount.id, label: latestCount.label, countedAt: latestCount.countedAt },
+    latestCount: isMenuOnly || !latestCount ? null : { id: latestCount.id, label: latestCount.label, countedAt: latestCount.countedAt },
   };
 
-  if (isAdminView) {
+  if (isAdmin) {
     const [databaseUsers, pendingInventoryItems, eventRecaps, eventLedgers] = await Promise.all([
       prisma.user.findMany({ orderBy: { name: "asc" }, select: { id: true, name: true, email: true, roles: true, priceMode: true, active: true } }),
       prisma.shoppingItem.findMany({
@@ -142,7 +139,7 @@ export async function GET(request: Request) {
     const users = databaseUsers.map((databaseUser) => ({ ...databaseUser, roles: normalizeRoles(databaseUser.roles) }));
     Object.assign(result, { users, pendingInventoryItems, barSettings, eventRecaps, eventLedgers });
   }
-  if (isManagerView) {
+  if (isManager) {
     const [counts, shoppingLists, bills, databaseUsers, allocations, correctionRequests, openCorrectionConsumptions, handoverTasks] = await Promise.all([
       prisma.stockCount.findMany({ orderBy: { countedAt: "desc" }, take: 8, include: { lines: true } }),
       prisma.shoppingList.findMany({ orderBy: { createdAt: "desc" }, include: { items: true } }),
@@ -190,7 +187,7 @@ export async function GET(request: Request) {
     }));
     Object.assign(result, { counts, shoppingLists, bills, billRecipients, allocations, correctionRequests: correctionsWithOpenQuantity, handoverTasks });
   }
-  if (isMemberView) {
+  if (isMember) {
     const [recentConsumptions, correctionRequests, correctionCandidates, consumptionSummary, openBillSummary] = await Promise.all([
       prisma.consumption.findMany({
         where: { userId: user.id, voidedAt: null },

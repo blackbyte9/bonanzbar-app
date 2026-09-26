@@ -64,6 +64,8 @@ type Bootstrap = {
 
 const demoRoles: Role[] = ["ADMIN", "MANAGER", "USER", "GUEST"];
 type AppDownloadLink = { label: string; detail: string; href: string };
+type HomeAction = { tab: string; title: string; description: string; status: string; tone?: "alert" | "danger" };
+type HomeActionGroup = { title: string; description: string; actions: HomeAction[] };
 
 function publicHttpsUrl(value: string | undefined): string | null {
   if (!value) return null;
@@ -135,7 +137,6 @@ export function Dashboard() {
   const [data, setData] = useState<Bootstrap | null>(null);
   const [message, setMessage] = useState("");
   const [loading, setLoading] = useState(false);
-  const [activeRole, setActiveRole] = useState<Role | null>(null);
   const [tab, setTab] = useState("overview");
   const [countValues, setCountValues] = useState<Record<string, CountValue>>({});
   const [shoppingSource, setShoppingSource] = useState<"inventory" | "new">("inventory");
@@ -145,11 +146,10 @@ export function Dashboard() {
   const [showPublicProgram, setShowPublicProgram] = useState(false);
 
   const request = async <T extends object = { error?: string }>(path: string, init?: RequestInit): Promise<T> => {
-    const visibleRoleHeader = activeRole;
     const response = await fetch(path, {
       ...init,
       credentials: "same-origin",
-      headers: { "Content-Type": "application/json", ...(demoToken ? { "x-bonanzbar-token": demoToken } : {}), ...(visibleRoleHeader ? { "x-bonanzbar-visible-role": visibleRoleHeader } : {}), ...(init?.headers ?? {}) },
+      headers: { "Content-Type": "application/json", ...(demoToken ? { "x-bonanzbar-token": demoToken } : {}), ...(init?.headers ?? {}) },
     });
     if (response.status === 204) return {} as T;
     const body = await readApiResponse<T & { error?: string }>(response);
@@ -171,7 +171,7 @@ export function Dashboard() {
   };
   useEffect(() => {
     if (sessionActive) void refresh();
-  }, [sessionActive, demoToken, activeRole]);
+  }, [sessionActive, demoToken]);
   useEffect(() => {
     const restoreSession = async () => {
       try {
@@ -226,7 +226,7 @@ export function Dashboard() {
       const body = await readApiResponse<{ token: string; role: Role; error?: string }>(response);
       if (!response.ok) throw new Error(body.error);
       setDemoToken(body.token);
-      setActiveRole(null);
+      setTab("overview");
       setSessionActive(true);
       setMessage(`Als lokale Demo-Rolle „${roleLabels[role]}“ angemeldet.`);
     } catch (error) {
@@ -249,7 +249,7 @@ export function Dashboard() {
       const body = await readApiResponse<{ user: { name: string }; error?: string }>(response);
       if (!response.ok) throw new Error(body.error ?? "Anmeldung fehlgeschlagen.");
       setDemoToken(null);
-      setActiveRole(null);
+      setTab("overview");
       setSessionActive(true);
       setMessage(`Als „${body.user.name}“ angemeldet.`);
     } catch (error) {
@@ -277,7 +277,7 @@ export function Dashboard() {
       const body = await readApiResponse<{ error?: string }>(response);
       if (!response.ok) throw new Error(body.error ?? "Erstzugang konnte nicht eingerichtet werden.");
       setDemoToken(null);
-      setActiveRole(null);
+      setTab("overview");
       setSessionActive(true);
       setShowSetup(false);
       setMessage("Administrationszugang wurde eingerichtet.");
@@ -291,7 +291,7 @@ export function Dashboard() {
     await fetch("/api/auth/logout", { method: "POST", credentials: "same-origin" });
     setDemoToken(null);
     setData(null);
-    setActiveRole(null);
+    setTab("overview");
     setSessionActive(false);
     setMessage("");
   };
@@ -336,7 +336,7 @@ export function Dashboard() {
         </section>
         <section className="login-card">
           {demoEnabled === null ? <><span className="pill">Lokale Entwicklung</span><h2>Anmeldung wird vorbereitet</h2><p>Prüfe verfügbare Anmeldeoptionen …</p></> : demoEnabled ? <><span className="pill">Lokale Entwicklung</span><h2>Zur Bar</h2><p>Wähle eine vorbereitete Rolle, um ihre Berechtigungen auszuprobieren.</p><div className="role-grid">
-            {demoRoles.map((role) => <button key={role} disabled={loading} onClick={() => void signInDemo(role)}>{roleLabels[role]}<small>{role === "ADMIN" ? "Inventar & Mitglieder" : role === "MANAGER" ? "Betrieb & Auswertungen" : "Meine Getränke"}</small></button>)}
+            {demoRoles.map((role) => <button key={role} disabled={loading} onClick={() => void signInDemo(role)}>{roleLabels[role]}<small>{role === "ADMIN" ? "Verwaltung, Betrieb & eigene Getränke" : role === "MANAGER" ? "Betrieb & eigene Getränke" : role === "USER" ? "Eigene Getränke & Crew" : "Getränkekarte & Programm"}</small></button>)}
           </div></> : showSetup && initialAdminSetupAvailable ? <><span className="pill">Ersteinrichtung</span><h2>Administration einrichten</h2><p>Verwende den einmaligen Einrichtungsschlüssel aus der sicheren Vercel-Variable.</p><form onSubmit={(event) => void setUpInitialAdmin(event)}><Field name="setupToken" label="Einrichtungsschlüssel" type="password" autoComplete="off" /><Field name="name" label="Name" autoComplete="name" /><Field name="email" label="E-Mail-Adresse" type="email" autoComplete="email" /><Field name="password" label="Passwort (mindestens 12 Zeichen)" type="password" autoComplete="new-password" /><button className="primary" disabled={loading}>Administrationszugang erstellen</button><button className="secondary compact-button" type="button" onClick={() => setShowSetup(false)}>Zur Anmeldung</button></form></> : <><span className="pill">Sicherer Zugang</span><h2>Anmelden</h2><p>Melde dich mit deiner E-Mail-Adresse und deinem Passwort an.</p><form onSubmit={(event) => void signIn(event)}><Field name="email" label="E-Mail-Adresse" type="email" autoComplete="email" /><Field name="password" label="Passwort" type="password" autoComplete="current-password" /><button className="primary" disabled={loading}>Anmelden</button>{initialAdminSetupAvailable && <button className="secondary compact-button" type="button" onClick={() => setShowSetup(true)}>Erstzugang einrichten</button>}</form></>}
           {appDownloadLinks.length > 0 && <section className="app-downloads" aria-label="Bonanzbar-Apps herunterladen">
             <span className="app-downloads-label">Unterwegs dabei</span>
@@ -351,62 +351,65 @@ export function Dashboard() {
     );
   }
 
-  const visibleRole = activeRole && data.user.roles.includes(activeRole) ? activeRole : data.user.roles[0] ?? "USER";
-  const isAdmin = visibleRole === "ADMIN";
-  const isManager = visibleRole === "MANAGER";
-  const isMember = visibleRole === "USER";
-  const isGuest = visibleRole === "GUEST";
+  const isAdmin = data.user.roles.includes("ADMIN");
+  const isManager = data.user.roles.includes("MANAGER");
+  const isMember = data.user.roles.includes("USER");
+  const isGuestOnly = data.user.roles.includes("GUEST") && !isMember;
   const canManageOps = isAdmin || isManager;
-  const homeActions = isAdmin
-    ? [
-        { tab: "inventory", title: "Inventar", description: "Artikel & Freigaben", status: lowStock.length > 0 ? `${lowStock.length} nachbestellen` : "Bestand im Blick", tone: lowStock.length > 0 ? "alert" : undefined },
+  const alertTone = (active: boolean): HomeAction["tone"] => active ? "alert" : undefined;
+  const actionGroups: HomeActionGroup[] = [
+    ...(isAdmin ? [{
+      title: "Verwaltung",
+      description: "Stammdaten, Preise und redaktionelle Inhalte.",
+      actions: [
+        { tab: "inventory", title: "Inventar", description: "Artikel & Freigaben", status: lowStock.length > 0 ? `${lowStock.length} nachbestellen` : "Bestand im Blick", tone: alertTone(lowStock.length > 0) },
         { tab: "users", title: "Mitglieder", description: "Konten & Rollen", status: `${data.users?.filter((user) => user.active).length ?? 0} aktiv` },
-        { tab: "pricing", title: "Preise", description: "Betriebsmodus & Regeln", status: data.barSettings?.isOfficiallyOpen ? "Offiziell geöffnet" : "Helferbetrieb" },
-        { tab: "events", title: "Programm", description: "Veranstaltungen & Bandinfos", status: upcomingEvents.length > 0 ? `${upcomingEvents.length} geplant` : "Noch nichts geplant" },
+        { tab: "pricing", title: "Preise", description: "Betriebsmodus & Tagesangebot", status: data.barSettings?.isOfficiallyOpen ? "Offiziell geöffnet" : "Helferbetrieb" },
         { tab: "recaps", title: "Rückblicke", description: "Konzerte veröffentlichen", status: `${data.eventRecaps?.length ?? 0} angelegt` },
         { tab: "ledgers", title: "Abrechnung", description: "Einnahmen & Ausgaben", status: `${data.eventLedgers?.length ?? 0} eröffnet` },
+        { tab: "reset", title: "Datenverwaltung", description: "Betriebsdaten zurücksetzen", status: "Nur Administration", tone: "danger" as const },
+      ],
+    }] : []),
+    ...(isManager ? [{
+      title: "Betrieb",
+      description: "Planung, Bestand und Abrechnung für den Barabend.",
+      actions: [
+        { tab: "count", title: "Bestand", description: "Zählen & speichern", status: data.latestCount ? date(data.latestCount.countedAt) : "Noch nicht gezählt" },
+        { tab: "shopping", title: "Einkaufsliste", description: "Was fehlt noch?", status: openShoppingLists.length > 0 ? `${openShoppingLists.length} offen` : "Keine offenen Listen", tone: alertTone(openShoppingLists.length > 0) },
+        { tab: "bills", title: "Rechnungen", description: "Abrechnen & verwalten", status: openBills > 0 ? `${openBills} offen` : "Keine offenen Rechnungen" },
+        { tab: "allocations", title: "Umlagen", description: "Gemeinsame Kosten verteilen", status: "Auf aktive Mitglieder" },
+        { tab: "corrections", title: "Korrekturen", description: "Einträge prüfen", status: pendingCorrections > 0 ? `${pendingCorrections} offen` : "Keine offenen Anfragen", tone: alertTone(pendingCorrections > 0) },
+        { tab: "reports", title: "Verkaufsbericht", description: "Zwischen Zählungen auswerten", status: "Absatz im Überblick" },
+        { tab: "tasks", title: "Übergabe", description: "To-dos & Verantwortung", status: `${data.handoverTasks?.filter((task) => task.status !== "DONE").length ?? 0} offen` },
+      ],
+    }] : []),
+    {
+      title: "Programm & Gemeinschaft",
+      description: "Termine, Dienste und gemeinsame Informationen.",
+      actions: [
+        { tab: "events", title: "Programm", description: canManageOps ? "Veranstaltungen & Dienste" : "Live-Musik & Tickets", status: upcomingEvents.length > 0 ? `${upcomingEvents.length} geplant` : "Noch nichts geplant" },
+        ...(isMember ? [{ tab: "notes", title: "Crew-Notizen", description: isManager ? "Infos veröffentlichen" : "Aktuelle Infos", status: `${data.notes?.filter((note) => isManager || note.pinned).length ?? 0} aktuell` }] : []),
         { tab: "social", title: "Social Wall", description: "Beiträge der Crew", status: `${data.socialPosts?.length ?? 0} aktuell` },
-        { tab: "reset", title: "Datenverwaltung", description: "Betriebsdaten zurücksetzen", status: "Nur Administration", tone: "danger" },
-      ]
-    : isManager
-      ? [
-          { tab: "events", title: "Veranstaltungen", description: "Programm & Dienste", status: upcomingEvents.length > 0 ? `${upcomingEvents.length} geplant` : "Noch nichts geplant" },
-          { tab: "shopping", title: "Einkaufsliste", description: "Was fehlt noch?", status: openShoppingLists.length > 0 ? `${openShoppingLists.length} offen` : "Keine offenen Listen", tone: openShoppingLists.length > 0 ? "alert" : undefined },
-          { tab: "count", title: "Bestand", description: "Zählen & speichern", status: data.latestCount ? date(data.latestCount.countedAt) : "Noch nicht gezählt" },
-          { tab: "bills", title: "Rechnungen", description: "Abrechnen & verwalten", status: openBills > 0 ? `${openBills} offen` : "Keine offenen Rechnungen" },
-          { tab: "allocations", title: "Umlagen", description: "Gemeinsame Kosten verteilen", status: "Auf aktive Mitglieder" },
-          { tab: "corrections", title: "Korrekturen", description: "Einträge prüfen", status: pendingCorrections > 0 ? `${pendingCorrections} offen` : "Keine offenen Anfragen", tone: pendingCorrections > 0 ? "alert" : undefined },
-          { tab: "reports", title: "Verkaufsbericht", description: "Zwischen Zählungen auswerten", status: "Absatz im Überblick" },
-          { tab: "notes", title: "Notizen", description: "Infos für die Crew", status: `${data.notes?.length ?? 0} aktuell` },
-          { tab: "tasks", title: "Übergabe", description: "To-dos & Verantwortung", status: `${data.handoverTasks?.filter((task) => task.status !== "DONE").length ?? 0} offen` },
-          { tab: "social", title: "Social Wall", description: "Beiträge der Crew", status: `${data.socialPosts?.length ?? 0} aktuell` },
-        ]
-      : isMember
-        ? [
-          { tab: "consume", title: "Drinklist", description: "Deine Getränkestriche", status: "Getränk eintragen" },
-          { tab: "events", title: "Veranstaltungen", description: "Programm & Dienste", status: upcomingEvents.length > 0 ? `${upcomingEvents.length} geplant` : "Noch nichts geplant" },
-          { tab: "notes", title: "Crew-Notizen", description: "Aktuelle Infos", status: `${data.notes?.filter((note) => note.pinned).length ?? 0} angeheftet` },
-          { tab: "social", title: "Social Wall", description: "Beiträge der Crew", status: `${data.socialPosts?.length ?? 0} aktuell` },
-        ]
-        : [
-          { tab: "menu", title: "Getränkekarte", description: "Aktuelle Gastpreise", status: `${data.inventory.length} Getränke` },
-          { tab: "events", title: "Programm", description: "Live-Musik & Tickets", status: upcomingEvents.length > 0 ? `${upcomingEvents.length} geplant` : "Noch nichts geplant" },
-          { tab: "social", title: "Social Wall", description: "Aus der Bonanzbar", status: `${data.socialPosts?.length ?? 0} aktuell` },
-        ];
+      ],
+    },
+    {
+      title: isMember ? "Meine Bonanzbar" : "Dein Besuch",
+      description: isMember ? "Eigene Getränke und deine aktuellen Einträge." : "Getränke, Preise und Tagesangebot.",
+      actions: [
+        ...(isMember ? [{ tab: "consume", title: "Meine Getränke", description: "Deinen Konsum eintragen", status: "Getränk eintragen" }] : []),
+        ...(isGuestOnly ? [{ tab: "menu", title: "Getränkekarte", description: "Aktuelle Gastpreise", status: `${data.inventory.length} Getränke` }] : []),
+      ],
+    },
+  ];
+  const homeActions = actionGroups.flatMap((group) => group.actions);
   const homeIntro = isAdmin
-    ? "Pflege die Basis für einen gut organisierten Barbetrieb."
+    ? "Verwaltung, Betrieb und dein persönlicher Bereich sind jetzt in einem gemeinsamen Menü gebündelt."
     : isManager
-      ? "Koordiniere alles Wichtige für den nächsten Barabend."
+      ? "Betrieb, Programm und deine eigenen Getränke findest du ohne Bereichswechsel an einem Ort."
       : isMember
-        ? "Halte deinen Konsum aktuell und bleib mit der Crew verbunden."
-        : "Entdecke Programm, Tagesangebot und die aktuelle Getränkekarte.";
-  const currentAction = homeActions.find((action) => action.tab === tab);
-  const switchRole = (role: Role) => {
-    setActiveRole(role);
-    setTab("overview");
-    setMessage("");
-  };
-  const openTab = (nextTab: string) => {
+        ? "Deine Getränke, Programm und alle Crew-Infos sind direkt erreichbar."
+        : "Getränkekarte, Programm und die Bonanzbar-Community auf einen Blick.";
+  const currentAction = homeActions.find((action) => action.tab === tab);  const openTab = (nextTab: string) => {
     setTab(nextTab);
     setMessage("");
     window.scrollTo({ top: 0, behavior: "smooth" });
@@ -417,9 +420,6 @@ export function Dashboard() {
       <header className="topbar">
         <div className="brand-lockup"><img className="brand-logo" src="/bonanzbar-logo.png" alt="Bonanzbar" /></div>
         <div className="header-actions">
-          <div className="role-switcher" role="tablist" aria-label="Bereich auswählen">
-            {data.user.roles.map((role) => <button key={role} type="button" role="tab" aria-selected={role === visibleRole} className={role === visibleRole ? "active" : ""} onClick={() => switchRole(role)}>{roleLabels[role]}</button>)}
-          </div>
           <div className="identity"><span>{data.user.name}</span><button className="secondary compact-button" onClick={() => void signOut()}>Abmelden</button></div>
         </div>
       </header>
@@ -427,15 +427,17 @@ export function Dashboard() {
       {tab !== "overview" && <div className="menu-context"><button type="button" className="secondary compact-button" onClick={() => openTab("overview")}>← Hauptmenü</button><span>{currentAction?.title}</span></div>}
 
       {tab === "overview" && <section className="content home-content">
-        <div className="home-heading"><div><p className="eyebrow">BONANZBAR · {roleLabels[visibleRole].toUpperCase()}</p><h1>Was steht an?</h1><p>{homeIntro}</p></div><button className="secondary" onClick={() => void refresh()} disabled={loading}>{loading ? "Lädt..." : "Aktualisieren"}</button></div>
-        <div className="action-menu" aria-label={`Hauptmenü ${roleLabels[visibleRole]}`}>
-          {homeActions.map((action, index) => <button key={action.tab} type="button" className={`action-tile${action.tone ? ` ${action.tone}` : ""}`} onClick={() => openTab(action.tab)}>
-            <span className="action-number">{String(index + 1).padStart(2, "0")}</span>
-            <span className="action-copy"><strong>{action.title}</strong><small>{action.description}</small></span>
-            <span className="action-status">{action.status}</span>
-          </button>)}
+        <div className="home-heading"><div><p className="eyebrow">BONANZBAR · CREW-BEREICH</p><h1>Alles an einem Ort.</h1><p>{homeIntro}</p></div><button className="secondary" onClick={() => void refresh()} disabled={loading}>{loading ? "Lädt..." : "Aktualisieren"}</button></div>
+        <div className="action-groups" aria-label="Hauptmenü">
+          {actionGroups.map((group) => <section className="action-group" key={group.title}><div className="action-group-heading"><h2>{group.title}</h2><p>{group.description}</p></div><div className="action-menu">
+            {group.actions.map((action) => <button key={action.tab} type="button" className={`action-tile${action.tone ? ` ${action.tone}` : ""}`} onClick={() => openTab(action.tab)}>
+              <span className="action-number">{String(homeActions.findIndex((candidate) => candidate.tab === action.tab) + 1).padStart(2, "0")}</span>
+              <span className="action-copy"><strong>{action.title}</strong><small>{action.description}</small></span>
+              <span className="action-status">{action.status}</span>
+            </button>)}
+          </div></section>)}
         </div>
-        {!isMember && !isGuest && lowStock.length > 0 && <section className="panel alert"><h2>Nachbestellung im Blick</h2>{lowStock.map((item) => <p key={item.id}>{item.name}: noch <b>{formatStockQuantity(item.onHand, item)}</b>; nachbestellen ab {formatStockQuantity(item.reorderLevel, item)}.</p>)}</section>}
+        {canManageOps && lowStock.length > 0 && <section className="panel alert"><h2>Nachbestellung im Blick</h2>{lowStock.map((item) => <p key={item.id}>{item.name}: noch <b>{formatStockQuantity(item.onHand, item)}</b>; nachbestellen ab {formatStockQuantity(item.reorderLevel, item)}.</p>)}</section>}
       </section>}
 
       {isAdmin && tab === "inventory" && <section className="content"><section className="two-column"><section className="panel"><h1>Inventarartikel hinzufügen</h1><form onSubmit={(event) => void submit(event, "/api/inventory", (form) => ({ name: value(form, "name"), category: value(form, "category"), unit: value(form, "unit"), packageSize: Number(value(form, "packageSize")), reorderLevel: Number(value(form, "reorderLevel")), priceCents: Math.round(Number(value(form, "publicPrice")) * 100), helperPriceCents: Math.round(Number(value(form, "helperPrice")) * 100), guestPriceCents: Math.round(Number(value(form, "guestPrice")) * 100), trackInventory: checked(form, "trackInventory"), showInMenu: checked(form, "showInMenu") }))}><Field name="name" label="Name" /><Field name="category" label="Kategorie" /><Field name="unit" label="Einheit" initial="Flasche" /><Field name="packageSize" label="Gebindegröße (Einheiten je Gebinde)" type="number" initial="1" min="1" /><Field name="reorderLevel" label="Meldebestand (Einheiten)" type="number" initial="0" min="0" /><Field name="publicPrice" label="Regulärer Preis (EUR)" type="number" step="0.01" initial="0" min="0" /><Field name="helperPrice" label="Helferpreis (EUR)" type="number" step="0.01" initial="0" min="0" /><Field name="guestPrice" label="Gastpreis (EUR)" type="number" step="0.01" initial="0" min="0" /><InventoryModeFields /><button className="primary">Artikel hinzufügen</button></form></section><EditableInventoryCatalog items={data.inventory} request={request} setMessage={setMessage} onUpdated={refresh} /></section><PendingInventoryApprovals items={data.pendingInventoryItems ?? []} request={request} setMessage={setMessage} onApproved={refresh} /></section>}
@@ -447,17 +449,16 @@ export function Dashboard() {
 
       {isManager && tab === "count" && <section className="content"><section className="panel"><h1>Bestandszählung abschließen</h1><p className="muted">Zähle volle Gebinde und einzelne Reste. Die App speichert daraus die Gesamtmenge in Einheiten als unveränderbare Grundlage für Auswertungen.</p><form onSubmit={(event) => void submit(event, "/api/counts", (form) => ({ label: value(form, "label"), notes: value(form, "notes"), lines: trackedInventory.map((item) => { const count = countValues[item.id] ?? { packages: 0, units: 0 }; return { itemId: item.id, quantity: count.packages * item.packageSize + count.units }; }) }))}><Field name="label" label="Name der Zählung" initial={`Zählung ${new Date().toLocaleDateString("de-DE")}`} /><label>Notizen<textarea name="notes" rows={2} /></label><div className="count-grid">{trackedInventory.map((item) => { const count = countValues[item.id] ?? { packages: 0, units: 0 }; return <div className="count-item" key={item.id}><b>{item.name}</b><small>{item.packageSize === 1 ? "Wird einzeln gezählt" : `${item.packageSize} ${item.unit} je Gebinde`}</small><div className="count-inputs">{item.packageSize > 1 && <label>Volle Gebinde<input type="number" min="0" value={count.packages} onChange={(event) => updateCountValue(item, { packages: Number(event.target.value) })} /></label>}<label>{item.packageSize > 1 ? `Einzelne ${item.unit}` : item.unit}<input type="number" min="0" max={item.packageSize > 1 ? item.packageSize - 1 : undefined} value={count.units} onChange={(event) => updateCountValue(item, { units: Number(event.target.value) })} /></label></div><small>Gesamt: {formatStockQuantity(count.packages * item.packageSize + count.units, item)}</small></div>; })}</div><button className="primary">Zählung abschließen</button></form></section></section>}
       {canManageOps && tab === "events" && <>{isAdmin && <HomepageProgramImport request={request} setMessage={setMessage} onUpdated={refresh} />}<EventManagement events={data.events ?? []} request={request} setMessage={setMessage} onUpdated={refresh} /></>}
-      {isManager && tab === "notes" && <NotesBoard notes={data.notes ?? []} events={data.events ?? []} canManage request={request} setMessage={setMessage} onUpdated={refresh} />}
       {isManager && tab === "shopping" && <section className="content two-column"><section className="panel"><h1>Einkaufsliste erstellen</h1><form onSubmit={(event) => void submit(event, "/api/shopping-lists", (form) => { const itemId = value(form, "itemId"); const item = trackedInventory.find((candidate) => candidate.id === itemId); return { title: value(form, "title"), items: [shoppingSource === "inventory" ? { itemId, name: item?.name ?? "", quantity: Number(value(form, "quantity")) } : { name: value(form, "newItemName"), quantity: Number(value(form, "quantity")) }] }; })}><Field name="title" label="Name der Liste" initial="Neue Nachbestellung" /><fieldset className="shopping-source"><legend>Artikelquelle</legend><label><input type="radio" checked={shoppingSource === "inventory"} onChange={() => setShoppingSource("inventory")} />Aus Inventar auswählen</label><label><input type="radio" checked={shoppingSource === "new"} onChange={() => setShoppingSource("new")} />Neuen Artikel eingeben</label></fieldset>{shoppingSource === "inventory" ? <label>Inventarartikel<select name="itemId">{trackedInventory.map((item) => <option value={item.id} key={item.id}>{item.name}</option>)}</select></label> : <><Field name="newItemName" label="Neuer Artikel" /><p className="muted">Der Artikel erscheint erst nach Freigabe durch die Administration in der Inventur.</p></>}<Field name="quantity" label="Menge" type="number" initial="1" /><button className="primary">Liste erstellen</button></form></section><ShoppingLists lists={data.shoppingLists ?? []} request={request} setMessage={setMessage} onUpdated={refresh} /></section>}
       {isManager && tab === "bills" && <section className="content two-column"><section className="panel"><h1>Rechnung erstellen</h1><form onSubmit={(event) => void submit(event, "/api/bills", (form) => ({ recipientId: value(form, "recipientId"), dueAt: new Date(`${value(form, "dueDate")}T12:00:00.000Z`).toISOString(), lines: [{ itemId: value(form, "itemId"), quantity: Number(value(form, "quantity")) }] }))}><label>Mitglied<select name="recipientId">{(data.billRecipients ?? []).map((user) => <option key={user.id} value={user.id}>{user.name}</option>)}</select></label><label>Artikel<select name="itemId">{menuItems.map((item) => <option value={item.id} key={item.id}>{item.name} — regulär {formatCurrency(item.priceCents)}, Helfer {formatCurrency(item.helperPriceCents)}</option>)}</select></label><p className="muted">Der Rechnungspreis wird beim Erstellen anhand der Preisregel des Mitglieds und des aktuellen Betriebsmodus festgelegt.</p><Field name="quantity" label="Menge" type="number" initial="1" /><Field name="dueDate" label="Fällig am" type="date" initial={new Date(Date.now() + 12096e5).toISOString().slice(0, 10)} /><button className="primary">Rechnung ausstellen</button></form></section><section className="panel"><h2>Letzte Rechnungen</h2>{(data.bills ?? []).map((bill) => <div className="row" key={bill.id}><span><b>{bill.recipient.name}</b><small>{bill.lines.map((line) => `${line.quantity}× ${line.description}`).join(", ")}</small></span><b>{formatCurrency(bill.totalCents)}</b></div>)}</section></section>}
       {isManager && tab === "allocations" && <CostAllocationPanel recipients={data.billRecipients ?? []} allocations={data.allocations ?? []} request={request} setMessage={setMessage} onUpdated={refresh} />}
       {isManager && tab === "corrections" && <CorrectionInbox corrections={data.correctionRequests ?? []} request={request} setMessage={setMessage} onUpdated={refresh} />}
       {isManager && tab === "reports" && <SalesReport counts={data.counts ?? []} request={request} setMessage={setMessage} />}
       {isManager && tab === "tasks" && <HandoverTaskBoard tasks={data.handoverTasks ?? []} assignees={data.billRecipients ?? []} request={request} setMessage={setMessage} onUpdated={refresh} />}
-      {!canManageOps && (isMember || isGuest) && tab === "events" && <EventBoard events={data.events ?? []} request={request} setMessage={setMessage} onUpdated={refresh} canApply={!isGuest} />}
-      {isMember && tab === "notes" && <NotesBoard notes={data.notes ?? []} events={data.events ?? []} canManage={false} request={request} setMessage={setMessage} onUpdated={refresh} />}
-      {tab === "social" && <SocialWall posts={data.socialPosts ?? []} currentUserId={data.user.id} canSubmit={isAdmin || isManager || isMember || isGuest} canComment={!isGuest} canModerate={isAdmin} isGuest={isGuest} request={request} setMessage={setMessage} onUpdated={refresh} />}
-      {isGuest && tab === "menu" && <section className="content two-column"><section className="panel"><h1>Getränkekarte</h1><p className="muted">Aktive Getränke und aktuelle Gastpreise.</p><GuestDrinkMenu items={menuItems} /></section><section className="panel"><h2>Tagesangebot</h2>{data.dailySpecial ? <><b>{data.dailySpecial.title}</b><p>{data.dailySpecial.description}</p><strong className="guest-special-price">{formatCurrency(data.dailySpecial.priceCents)}</strong></> : <p className="muted">Heute gibt es kein aktives Tagesangebot.</p>}</section></section>}
+      {!canManageOps && (isMember || isGuestOnly) && tab === "events" && <EventBoard events={data.events ?? []} request={request} setMessage={setMessage} onUpdated={refresh} canApply={!isGuestOnly} />}
+      {isMember && tab === "notes" && <NotesBoard notes={data.notes ?? []} events={data.events ?? []} canManage={isManager} request={request} setMessage={setMessage} onUpdated={refresh} />}
+      {tab === "social" && <SocialWall posts={data.socialPosts ?? []} currentUserId={data.user.id} canSubmit canComment={isMember} canModerate={isAdmin} isGuest={isGuestOnly} request={request} setMessage={setMessage} onUpdated={refresh} />}
+      {isGuestOnly && tab === "menu" && <section className="content two-column"><section className="panel"><h1>Getränkekarte</h1><p className="muted">Aktive Getränke und aktuelle Gastpreise.</p><GuestDrinkMenu items={menuItems} /></section><section className="panel"><h2>Tagesangebot</h2>{data.dailySpecial ? <><b>{data.dailySpecial.title}</b><p>{data.dailySpecial.description}</p><strong className="guest-special-price">{formatCurrency(data.dailySpecial.priceCents)}</strong></> : <p className="muted">Heute gibt es kein aktives Tagesangebot.</p>}</section></section>}
       {isMember && tab === "consume" && <section className="content"><section className="panel"><h1>Getränk eintragen</h1><p className="muted">Der Eintrag wird deinem Konto zugeordnet und kann in die nächste Rechnung übernommen werden.</p><form onSubmit={(event) => void submit(event, "/api/consumptions", (form) => ({ itemId: value(form, "itemId"), quantity: Number(value(form, "quantity")) }))}><label>Was hattest du?<select name="itemId">{menuItems.map((item) => <option value={item.id} key={item.id}>{item.name} — {formatCurrency(item.effectivePriceCents)}</option>)}</select></label><Field name="quantity" label="Menge" type="number" initial="1" /><button className="primary">Zu meinem Konto hinzufügen</button></form></section><RecentConsumptions consumptions={data.recentConsumptions ?? []} request={request} setMessage={setMessage} onUpdated={refresh} /><CorrectionRequestPanel consumptions={data.correctionCandidates ?? []} corrections={data.correctionRequests ?? []} request={request} setMessage={setMessage} onUpdated={refresh} /></section>}
     </main>
   );
@@ -520,7 +521,7 @@ function RoleOverviewBanner({ role, lowStock }: { role: Role; lowStock: number }
       : { eyebrow: "MITGLIEDERBEREICH", title: "Schön, dass du da bist.", text: "Sieh nach, was da ist, halte deinen Konsum aktuell und trage dich für den nächsten Einsatz ein.", action: "Deinen Beitrag zur Crew leisten" };
   return <section className="role-overview"><div><p className="eyebrow">{content.eyebrow}</p><h2>{content.title}</h2><p>{content.text}</p></div><span>{content.action}</span></section>;
 }
-function GuestDrinkMenu({ items }: { items: Array<Pick<Item, "id" | "name" | "category" | "effectivePriceCents">> }) { return <div className="table guest-drink-menu">{items.map((item) => <div className="table-row" key={item.id}><span><b>{item.name}</b><small>{item.category}</small></span><strong>{formatCurrency(item.effectivePriceCents)}</strong></div>)}</div>; }
+function GuestDrinkMenu({ items }: { items: Array<Pick<Item, "id" | "name" | "category" | "guestPriceCents" | "effectivePriceCents">> }) { return <div className="table guest-drink-menu">{items.map((item) => <div className="table-row" key={item.id}><span><b>{item.name}</b><small>{item.category}</small></span><strong>{formatCurrency(item.guestPriceCents ?? item.effectivePriceCents)}</strong></div>)}</div>; }
 function InventoryTable({ items, onDeactivate }: { items: Item[]; onDeactivate?: (item: Item) => void }) { return <div className="table">{items.map((item) => <div className="table-row" key={item.id}><span><b>{item.name}</b><small>{item.category} · {formatCurrency(item.effectivePriceCents)} · {item.packageSize} {item.unit} je Gebinde</small></span><span className={item.onHand <= item.reorderLevel ? "low" : ""}>{formatStockQuantity(item.onHand, item)}<small>Meldebestand: {formatStockQuantity(item.reorderLevel, item)}</small>{onDeactivate && <button className="danger-button compact-button inline-action" onClick={() => onDeactivate(item)}>Ausmustern</button>}</span></div>)}</div>; }
 function PricingAdministration({ settings, users, request, setMessage, onUpdated }: { settings: { isOfficiallyOpen: boolean; updatedAt: string }; users: User[]; request: (path: string, init?: RequestInit) => Promise<unknown>; setMessage: (value: string) => void; onUpdated: () => Promise<void> }) {
   const updateServiceMode = async (isOfficiallyOpen: boolean) => {
