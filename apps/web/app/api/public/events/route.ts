@@ -16,6 +16,7 @@ export async function GET() {
         bandImageUrls: true,
         ticketUrl: true,
         youtubeUrl: true,
+        sourceUrl: true,
         startsAt: true,
         endsAt: true,
       },

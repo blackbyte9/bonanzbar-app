@@ -7,7 +7,7 @@
     "build": "node scripts/migrate-deploy.cjs && prisma generate && next build",
     "start": "next start",
     "typecheck": "tsc --noEmit",
-    "test": "tsx --test tests/demo-mode-parity.test.ts",
+    "test": "tsx --test tests/demo-mode-parity.test.ts tests/jimdo-program.test.ts",
     "db:generate": "prisma generate",
     "db:migrate": "node scripts/prisma-with-local-env.cjs migrate dev --name development",
     "db:deploy": "node scripts/prisma-with-local-env.cjs migrate deploy",

@@ -248,6 +248,9 @@ model BarEvent {
   bandImageUrls    String[]     @default([])
   ticketUrl        String?
   youtubeUrl       String?
+  sourceUrl        String?
+  sourceEventKey   String?      @unique
+  sourceImportedAt DateTime?
   startsAt         DateTime
   endsAt           DateTime?
   status           EventStatus  @default(DRAFT)
