@@ -12,6 +12,8 @@ const draftSchema = z.object({
   reorderLevel: z.coerce.number().int().min(0).max(100000),
   priceCents: z.coerce.number().int().min(0).max(100000000),
   helperPriceCents: z.coerce.number().int().min(0).max(100000000),
+  trackInventory: z.boolean(),
+  showInMenu: z.boolean(),
 });
 
 export async function PATCH(request: Request, context: { params: Promise<{ id: string }> }) {
@@ -37,6 +39,8 @@ export async function PATCH(request: Request, context: { params: Promise<{ id: s
         proposedReorderLevel: input.reorderLevel,
         proposedPriceCents: input.priceCents,
         proposedHelperPriceCents: input.helperPriceCents,
+        proposedTrackInventory: input.trackInventory,
+        proposedShowInMenu: input.showInMenu,
       },
     });
     return NextResponse.json(updated);

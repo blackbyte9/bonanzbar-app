@@ -20,6 +20,8 @@ type PendingInventoryItem = {
   proposedReorderLevel: number | null;
   proposedPriceCents: number | null;
   proposedHelperPriceCents: number | null;
+  proposedTrackInventory: boolean | null;
+  proposedShowInMenu: boolean | null;
   list: { title: string; status: string };
 };
 type Bill = { id: string; totalCents: number; status: string; issuedAt: string; recipient: { id?: string; name: string }; lines: { id: string; description: string; quantity: number; unitCents: number }[] };
@@ -470,7 +472,7 @@ function Notice({ message, className, onDismiss }: { message: string; className?
 }
 function Field({ name, label, type = "text", initial, step, min, max, autoComplete, required = true }: { name: string; label: string; type?: string; initial?: string; step?: string; min?: string; max?: string; autoComplete?: string; required?: boolean }) { return <label>{label}<input name={name} type={type} defaultValue={initial} step={step} min={min} max={max} autoComplete={autoComplete} required={required} /></label>; }
 function checked(form: HTMLFormElement, name: string) { return new FormData(form).get(name) === "on"; }
-function InventoryModeFields({ item }: { item?: Pick<Item, "trackInventory" | "showInMenu"> }) {
+function InventoryModeFields({ item }: { item?: { trackInventory?: boolean | null; showInMenu?: boolean | null } }) {
   return <fieldset className="inventory-mode-fields">
     <legend>Artikelmodus</legend>
     <label className="checkbox-label"><input name="trackInventory" type="checkbox" defaultChecked={item?.trackInventory !== false} />Im Inventar führen</label>
@@ -854,33 +856,39 @@ function EditableInventoryCatalog({ items, request, setMessage, onUpdated }: { i
     }
   };
 
-  return <section className="panel"><h2>Aktueller Katalog</h2><p className="muted">Artikel lassen sich direkt bearbeiten. Änderungen gelten für künftige Zählungen und Rechnungen.</p><div className="editable-inventory">{items.map((item) => editingId === item.id ? <form className="inventory-edit-form" key={item.id} onSubmit={(event) => void update(event, item)}><div className="edit-heading"><b>{item.name} bearbeiten</b><button type="button" className="secondary compact-button" onClick={() => setEditingId(null)}>Abbrechen</button></div><div className="approval-fields"><Field name="name" label="Name" initial={item.name} /><Field name="category" label="Kategorie" initial={item.category} /><Field name="unit" label="Einheit" initial={item.unit} /><Field name="packageSize" label="Gebindegröße (Einheiten je Gebinde)" type="number" initial={String(item.packageSize)} min="1" /><Field name="reorderLevel" label="Meldebestand (Einheiten)" type="number" initial={String(item.reorderLevel)} min="0" /><Field name="publicPrice" label="Regulärer Preis (EUR)" type="number" step="0.01" initial={(item.priceCents / 100).toFixed(2)} min="0" /><Field name="helperPrice" label="Helferpreis (EUR)" type="number" step="0.01" initial={(item.helperPriceCents / 100).toFixed(2)} min="0" /><Field name="guestPrice" label="Gastpreis (EUR)" type="number" step="0.01" initial={(item.guestPriceCents / 100).toFixed(2)} min="0" /></div><InventoryModeFields item={item} /><button className="primary">Änderungen speichern</button></form> : <div className="editable-inventory-row" key={item.id}><span><b>{item.name}</b><small>{item.category} · {item.packageSize} {item.unit} je Gebinde · Meldebestand: {formatStockQuantity(item.reorderLevel, item)} · {itemModeLabel(item)}</small></span><span className="catalog-actions"><b>Regulär: {formatCurrency(item.priceCents)}</b><small>Helfer: {formatCurrency(item.helperPriceCents)}</small><small>Gast: {formatCurrency(item.guestPriceCents)}</small><button type="button" className="secondary compact-button" onClick={() => setEditingId(item.id)}>Bearbeiten</button><button type="button" className="danger-button compact-button" onClick={() => void retire(item)}>Ausmustern</button></span></div>)}</div></section>;
+  return <section className="panel"><h2>Aktueller Katalog</h2><p className="muted">Artikel lassen sich direkt bearbeiten. Änderungen gelten für künftige Zählungen und Rechnungen.</p><div className="editable-inventory">{items.map((item) => editingId === item.id ? <form className="inventory-edit-form" key={item.id} onSubmit={(event) => void update(event, item)}><div className="edit-heading"><b>{item.name} bearbeiten</b><button type="button" className="secondary compact-button" onClick={() => setEditingId(null)}>Abbrechen</button></div><div className="approval-fields"><Field name="name" label="Name" initial={item.name} /><Field name="category" label="Kategorie" initial={item.category} /><Field name="unit" label="Einheit" initial={item.unit} /><Field name="packageSize" label="Gebindegröße (Einheiten je Gebinde)" type="number" initial={String(item.packageSize)} min="1" /><Field name="reorderLevel" label="Meldebestand (Einheiten)" type="number" initial={String(item.reorderLevel)} min="0" /><Field name="publicPrice" label="Regulärer Preis (EUR)" type="number" step="0.01" initial={(item.priceCents / 100).toFixed(2)} min="0" /><Field name="helperPrice" label="Helferpreis (EUR)" type="number" step="0.01" initial={(item.helperPriceCents / 100).toFixed(2)} min="0" /><Field name="guestPrice" label="Gastpreis (EUR)" type="number" step="0.01" initial={(item.guestPriceCents / 100).toFixed(2)} min="0" /></div><InventoryModeFields item={item} /><button className="primary">Änderungen speichern</button></form> : <div className="editable-inventory-row" key={item.id}><div className="catalog-item-details"><b>{item.name}</b><small>{item.category} · {item.packageSize} {item.unit} je Gebinde · Meldebestand: {formatStockQuantity(item.reorderLevel, item)} · {itemModeLabel(item)}</small></div><div className="catalog-row-footer"><div className="catalog-prices" aria-label={`Preise für ${item.name}`}><span><small>Regulär</small><b>{formatCurrency(item.priceCents)}</b></span><span><small>Helfer</small><b>{formatCurrency(item.helperPriceCents)}</b></span><span><small>Gast</small><b>{formatCurrency(item.guestPriceCents)}</b></span></div><div className="catalog-actions"><button type="button" className="secondary compact-button" onClick={() => setEditingId(item.id)}>Bearbeiten</button><button type="button" className="danger-button compact-button" onClick={() => void retire(item)}>Ausmustern</button></div></div></div>)}</div></section>;
 }
 function PendingInventoryApprovals({ items, request, setMessage, onApproved }: { items: PendingInventoryItem[]; request: (path: string, init?: RequestInit) => Promise<unknown>; setMessage: (value: string) => void; onApproved: () => Promise<void> }) {
-  const saveDraft = async (event: FormEvent<HTMLFormElement>, shoppingItemId: string) => {
+  const saveDraft = async (form: HTMLFormElement, shoppingItemId: string) => {
+    await request(`/api/inventory/approvals/${shoppingItemId}`, {
+      method: "PATCH",
+      body: JSON.stringify({
+        name: value(form, "name"),
+        category: value(form, "category"),
+        unit: value(form, "unit"),
+        packageSize: Number(value(form, "packageSize")),
+        reorderLevel: Number(value(form, "reorderLevel")),
+        priceCents: Math.round(Number(value(form, "price")) * 100),
+        helperPriceCents: Math.round(Number(value(form, "helperPrice")) * 100),
+        trackInventory: checked(form, "trackInventory"),
+        showInMenu: checked(form, "showInMenu"),
+      }),
+    });
+  };
+  const handleSaveDraft = async (event: FormEvent<HTMLFormElement>, shoppingItemId: string) => {
     event.preventDefault();
-    const form = event.currentTarget;
     try {
-      await request(`/api/inventory/approvals/${shoppingItemId}`, {
-        method: "PATCH",
-        body: JSON.stringify({
-          name: value(form, "name"),
-          category: value(form, "category"),
-          unit: value(form, "unit"),
-          packageSize: Number(value(form, "packageSize")),
-          reorderLevel: Number(value(form, "reorderLevel")),
-          priceCents: Math.round(Number(value(form, "price")) * 100),
-          helperPriceCents: Math.round(Number(value(form, "helperPrice")) * 100),
-        }),
-      });
+      await saveDraft(event.currentTarget, shoppingItemId);
       setMessage("Entwurf für den neuen Artikel gespeichert.");
       await onApproved();
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Artikelentwurf konnte nicht gespeichert werden.");
     }
   };
-  const approve = async (shoppingItemId: string) => {
+  const approve = async (form: HTMLFormElement, shoppingItemId: string) => {
+    if (!form.reportValidity()) return;
     try {
+      await saveDraft(form, shoppingItemId);
       await request("/api/inventory/approvals", { method: "POST", body: JSON.stringify({ shoppingItemId }) });
       setMessage("Artikel für künftige Inventuren freigegeben.");
       await onApproved();
@@ -889,7 +897,7 @@ function PendingInventoryApprovals({ items, request, setMessage, onApproved }: {
     }
   };
 
-  return <section className="panel"><h2>Neue Artikel für Inventur freigeben</h2><p className="muted">Freie Positionen aus Einkaufslisten können hier erst bearbeitet und anschließend für künftige Inventuren freigegeben werden.</p>{items.length === 0 ? <p className="muted">Keine neuen Artikel warten auf Freigabe.</p> : <div className="approval-list">{items.map((item) => <form className="approval-form" key={item.id} onSubmit={(event) => void saveDraft(event, item.id)}><div className="approval-heading"><span><b>{item.name}</b><small>{item.quantity}× auf „{item.list.title}“ {item.list.status === "PURCHASED" ? "eingekauft" : "offen"}</small></span><span className="pill">Noch nicht im Inventar</span></div><div className="approval-fields"><Field name="name" label="Name" initial={item.name} /><Field name="category" label="Kategorie" initial={item.proposedCategory ?? "Sonstiges"} /><Field name="unit" label="Einheit" initial={item.proposedUnit ?? "Flasche"} /><Field name="packageSize" label="Gebindegröße (Einheiten je Gebinde)" type="number" initial={String(item.proposedPackageSize ?? 1)} min="1" /><Field name="reorderLevel" label="Meldebestand (Einheiten)" type="number" initial={String(item.proposedReorderLevel ?? 0)} min="0" /><Field name="price" label="Regulärer Preis (EUR)" type="number" step="0.01" initial={((item.proposedPriceCents ?? 0) / 100).toFixed(2)} min="0" /><Field name="helperPrice" label="Helferpreis (EUR)" type="number" step="0.01" initial={((item.proposedHelperPriceCents ?? 0) / 100).toFixed(2)} min="0" /></div><div className="approval-actions"><button className="secondary">Änderungen speichern</button><button type="button" className="primary" onClick={() => void approve(item.id)}>Für Inventur freigeben</button></div></form>)}</div>}</section>;
+  return <section className="panel"><h2>Neue Artikel für Inventur freigeben</h2><p className="muted">Prüfe neue Einkaufspositionen, lege ihren Einsatz fest und übernimm sie anschließend in den Katalog.</p>{items.length === 0 ? <p className="muted">Keine neuen Artikel warten auf Freigabe.</p> : <div className="approval-list">{items.map((item) => <form className="approval-form" key={item.id} onSubmit={(event) => void handleSaveDraft(event, item.id)}><div className="approval-heading"><span><b>{item.name}</b><small>{item.quantity}× auf „{item.list.title}“ {item.list.status === "PURCHASED" ? "eingekauft" : "offen"}</small></span><span className="pill">Noch nicht im Inventar</span></div><div className="approval-fields approval-item-fields"><Field name="name" label="Name" initial={item.name} /><Field name="category" label="Kategorie" initial={item.proposedCategory ?? "Sonstiges"} /><Field name="unit" label="Einheit" initial={item.proposedUnit ?? "Flasche"} /></div><div className="approval-fields approval-number-fields"><Field name="packageSize" label="Gebindegröße" type="number" initial={String(item.proposedPackageSize ?? 1)} min="1" /><Field name="reorderLevel" label="Meldebestand" type="number" initial={String(item.proposedReorderLevel ?? 0)} min="0" /><Field name="price" label="Regulärer Preis (EUR)" type="number" step="0.01" initial={((item.proposedPriceCents ?? 0) / 100).toFixed(2)} min="0" /><Field name="helperPrice" label="Helferpreis (EUR)" type="number" step="0.01" initial={((item.proposedHelperPriceCents ?? 0) / 100).toFixed(2)} min="0" /></div><InventoryModeFields item={{ trackInventory: item.proposedTrackInventory, showInMenu: item.proposedShowInMenu }} /><div className="approval-actions"><button className="secondary">Entwurf speichern</button><button type="button" className="primary" onClick={(event) => { const form = event.currentTarget.form; if (form) void approve(form, item.id); }}>Für Inventur freigeben</button></div><small className="muted">Beim Freigeben werden alle aktuellen Eingaben einschließlich Artikelmodus übernommen.</small></form>)}</div>}</section>;
 }
 function ShoppingLists({ lists, request, setMessage, onUpdated }: { lists: ShoppingList[]; request: (path: string, init?: RequestInit) => Promise<unknown>; setMessage: (value: string) => void; onUpdated: () => Promise<void> }) {
   const openLists = lists.filter((list) => list.status === "OPEN");

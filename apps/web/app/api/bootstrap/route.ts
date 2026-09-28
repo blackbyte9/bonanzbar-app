@@ -121,6 +121,8 @@ export async function GET(request: Request) {
           proposedReorderLevel: true,
           proposedPriceCents: true,
           proposedHelperPriceCents: true,
+          proposedTrackInventory: true,
+          proposedShowInMenu: true,
           list: { select: { title: true, status: true } },
         },
       }),

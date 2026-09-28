@@ -182,7 +182,7 @@ Der erste Administrationszugang ist geschützt: Setze ausschließlich für Produ
 
 Die Barleitung kann beim Erstellen einer Einkaufsliste zwischen einem bekannten Inventarartikel und **„Neuen Artikel eingeben“** wählen. Ein frei eingegebener Artikel bleibt zunächst ausschließlich eine Einkaufsposition und erscheint nicht in Bestandszählungen oder der Inventarliste.
 
-Unter **Inventar → Neue Artikel für Inventur freigeben** kann die Administration zunächst Name, Kategorie, Einheit, Gebindegröße, Meldebestand und Preis als Entwurf bearbeiten und speichern. Erst die anschließende Freigabe legt den Artikel im Inventarkatalog an und nimmt ihn in künftige Inventuren auf. Die Beispieldaten enthalten mit **Tonic Water** bereits eine solche noch nicht freigegebene Einkaufsposition.
+Unter **Inventar → Neue Artikel für Inventur freigeben** kann die Administration zunächst Name, Kategorie, Einheit, Gebindegröße, Meldebestand und Preise als Entwurf bearbeiten. Außerdem wird festgelegt, ob der Artikel inventargeführt und/oder auf der Getränkekarte angeboten wird. Die Freigabe übernimmt stets die aktuellen Formulareingaben und legt den Artikel im Inventarkatalog an. Die Beispieldaten enthalten mit **Tonic Water** bereits eine solche noch nicht freigegebene Einkaufsposition.
 
 ## Gebinde und Bestandszählungen
 

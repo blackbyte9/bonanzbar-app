@@ -25,6 +25,8 @@ export async function POST(request: Request) {
           proposedReorderLevel: true,
           proposedPriceCents: true,
           proposedHelperPriceCents: true,
+          proposedTrackInventory: true,
+          proposedShowInMenu: true,
         },
       });
       if (!shoppingItem) return { kind: "missing" as const };
@@ -52,6 +54,8 @@ export async function POST(request: Request) {
             priceCents: shoppingItem.proposedPriceCents,
             helperPriceCents: shoppingItem.proposedHelperPriceCents,
             guestPriceCents: shoppingItem.proposedPriceCents,
+            trackInventory: shoppingItem.proposedTrackInventory ?? true,
+            showInMenu: shoppingItem.proposedShowInMenu ?? true,
             active: true,
           },
         })
@@ -65,6 +69,8 @@ export async function POST(request: Request) {
             priceCents: shoppingItem.proposedPriceCents,
             helperPriceCents: shoppingItem.proposedHelperPriceCents,
             guestPriceCents: shoppingItem.proposedPriceCents,
+            trackInventory: shoppingItem.proposedTrackInventory ?? true,
+            showInMenu: shoppingItem.proposedShowInMenu ?? true,
           },
         });
 
