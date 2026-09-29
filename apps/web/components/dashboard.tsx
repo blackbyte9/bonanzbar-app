@@ -9,7 +9,8 @@ type Item = { id: string; name: string; category: string; unit: string; packageS
 type Count = { id: string; label: string; countedAt: string; lines: { itemId: string; quantity: number }[] };
 type CountValue = { packages: number; units: number };
 type User = { id: string; name: string; email: string; roles?: Role[]; priceMode?: PriceMode; active?: boolean };
-type ShoppingList = { id: string; title: string; status: string; items: { id: string; itemId: string | null; name: string; quantity: number; purchased: boolean }[] };
+type ShoppingList = { id: string; title: string; status: string; items: { id: string; itemId: string | null; name: string; quantity: number; purchased: boolean; purchasedAt: string | null }[] };
+type ShoppingListItem = ShoppingList["items"][number];
 type PendingInventoryItem = {
   id: string;
   name: string;
@@ -92,6 +93,7 @@ const appDownloadLinks: AppDownloadLink[] = [
   },
 ].filter((link): link is AppDownloadLink => Boolean(link.href));
 
+const purchasedItemRetentionMilliseconds = 60 * 60 * 1_000;
 const date = (value: string) => new Intl.DateTimeFormat("de-DE", { dateStyle: "medium" }).format(new Date(value));
 const dateTime = (value: string) => new Intl.DateTimeFormat("de-DE", { dateStyle: "medium", timeStyle: "short" }).format(new Date(value));
 const dateTimeInput = (value: string) => {
@@ -108,6 +110,13 @@ const formatStockQuantity = (quantity: number, item: Pick<Item, "unit" | "packag
   const { packages, units } = splitQuantityIntoPackages(quantity, item.packageSize);
   return `${packages} Gebinde${units > 0 ? ` + ${units} ${item.unit}` : ""}`;
 };
+const formatShoppingQuantity = (quantity: number, item: Pick<Item, "unit" | "packageSize">) => {
+  if (item.packageSize === 1) return `${quantity} ${item.unit}`;
+  const { packages, units } = splitQuantityIntoPackages(quantity, item.packageSize);
+  if (packages === 0) return `${units} ${item.unit}`;
+  return `${packages} Gebinde${units > 0 ? ` + ${units} ${item.unit}` : ""}`;
+};
+const shoppingSuggestion = (item: Pick<Item, "name" | "unit">) => `${item.name} · ${item.unit}`;
 const itemModeLabel = (item: Pick<Item, "trackInventory" | "showInMenu">) => item.trackInventory !== false && item.showInMenu !== false
   ? "Inventar & Getränkekarte"
   : item.trackInventory !== false
@@ -141,7 +150,6 @@ export function Dashboard() {
   const [loading, setLoading] = useState(false);
   const [tab, setTab] = useState("overview");
   const [countValues, setCountValues] = useState<Record<string, CountValue>>({});
-  const [shoppingSource, setShoppingSource] = useState<"inventory" | "new">("inventory");
   const [showSetup, setShowSetup] = useState(false);
   const [initialAdminSetupAvailable, setInitialAdminSetupAvailable] = useState(false);
   const [demoEnabled, setDemoEnabled] = useState<boolean | null>(null);
@@ -451,7 +459,7 @@ export function Dashboard() {
 
       {isManager && tab === "count" && <section className="content"><section className="panel"><h1>Bestandszählung abschließen</h1><p className="muted">Zähle volle Gebinde und einzelne Reste. Die App speichert daraus die Gesamtmenge in Einheiten als unveränderbare Grundlage für Auswertungen.</p><form onSubmit={(event) => void submit(event, "/api/counts", (form) => ({ label: value(form, "label"), notes: value(form, "notes"), lines: trackedInventory.map((item) => { const count = countValues[item.id] ?? { packages: 0, units: 0 }; return { itemId: item.id, quantity: count.packages * item.packageSize + count.units }; }) }))}><Field name="label" label="Name der Zählung" initial={`Zählung ${new Date().toLocaleDateString("de-DE")}`} /><label>Notizen<textarea name="notes" rows={2} /></label><div className="count-grid">{trackedInventory.map((item) => { const count = countValues[item.id] ?? { packages: 0, units: 0 }; return <div className="count-item" key={item.id}><b>{item.name}</b><small>{item.packageSize === 1 ? "Wird einzeln gezählt" : `${item.packageSize} ${item.unit} je Gebinde`}</small><div className="count-inputs">{item.packageSize > 1 && <label>Volle Gebinde<input type="number" min="0" value={count.packages} onChange={(event) => updateCountValue(item, { packages: Number(event.target.value) })} /></label>}<label>{item.packageSize > 1 ? `Einzelne ${item.unit}` : item.unit}<input type="number" min="0" max={item.packageSize > 1 ? item.packageSize - 1 : undefined} value={count.units} onChange={(event) => updateCountValue(item, { units: Number(event.target.value) })} /></label></div><small>Gesamt: {formatStockQuantity(count.packages * item.packageSize + count.units, item)}</small></div>; })}</div><button className="primary">Zählung abschließen</button></form></section></section>}
       {canManageOps && tab === "events" && <>{isAdmin && <HomepageProgramImport request={request} setMessage={setMessage} onUpdated={refresh} />}<EventManagement events={data.events ?? []} request={request} setMessage={setMessage} onUpdated={refresh} /></>}
-      {isManager && tab === "shopping" && <section className="content two-column"><section className="panel"><h1>Einkaufsliste erstellen</h1><form onSubmit={(event) => void submit(event, "/api/shopping-lists", (form) => { const itemId = value(form, "itemId"); const item = trackedInventory.find((candidate) => candidate.id === itemId); return { title: value(form, "title"), items: [shoppingSource === "inventory" ? { itemId, name: item?.name ?? "", quantity: Number(value(form, "quantity")) } : { name: value(form, "newItemName"), quantity: Number(value(form, "quantity")) }] }; })}><Field name="title" label="Name der Liste" initial="Neue Nachbestellung" /><fieldset className="shopping-source"><legend>Artikelquelle</legend><label><input type="radio" checked={shoppingSource === "inventory"} onChange={() => setShoppingSource("inventory")} />Aus Inventar auswählen</label><label><input type="radio" checked={shoppingSource === "new"} onChange={() => setShoppingSource("new")} />Neuen Artikel eingeben</label></fieldset>{shoppingSource === "inventory" ? <label>Inventarartikel<select name="itemId">{trackedInventory.map((item) => <option value={item.id} key={item.id}>{item.name}</option>)}</select></label> : <><Field name="newItemName" label="Neuer Artikel" /><p className="muted">Der Artikel erscheint erst nach Freigabe durch die Administration in der Inventur.</p></>}<Field name="quantity" label="Menge" type="number" initial="1" /><button className="primary">Liste erstellen</button></form></section><ShoppingLists lists={data.shoppingLists ?? []} request={request} setMessage={setMessage} onUpdated={refresh} /></section>}
+      {isManager && tab === "shopping" && <ShoppingListManager lists={data.shoppingLists ?? []} inventoryItems={trackedInventory} request={request} setMessage={setMessage} onUpdated={refresh} />}
       {isManager && tab === "bills" && <section className="content two-column"><section className="panel"><h1>Rechnung erstellen</h1><form onSubmit={(event) => void submit(event, "/api/bills", (form) => ({ recipientId: value(form, "recipientId"), dueAt: new Date(`${value(form, "dueDate")}T12:00:00.000Z`).toISOString(), lines: [{ itemId: value(form, "itemId"), quantity: Number(value(form, "quantity")) }] }))}><label>Mitglied<select name="recipientId">{(data.billRecipients ?? []).map((user) => <option key={user.id} value={user.id}>{user.name}</option>)}</select></label><label>Artikel<select name="itemId">{menuItems.map((item) => <option value={item.id} key={item.id}>{item.name} — regulär {formatCurrency(item.priceCents)}, Helfer {formatCurrency(item.helperPriceCents)}</option>)}</select></label><p className="muted">Der Rechnungspreis wird beim Erstellen anhand der Preisregel des Mitglieds und des aktuellen Betriebsmodus festgelegt.</p><Field name="quantity" label="Menge" type="number" initial="1" /><Field name="dueDate" label="Fällig am" type="date" initial={new Date(Date.now() + 12096e5).toISOString().slice(0, 10)} /><button className="primary">Rechnung ausstellen</button></form></section><section className="panel"><h2>Letzte Rechnungen</h2>{(data.bills ?? []).map((bill) => <div className="row" key={bill.id}><span><b>{bill.recipient.name}</b><small>{bill.lines.map((line) => `${line.quantity}× ${line.description}`).join(", ")}</small></span><b>{formatCurrency(bill.totalCents)}</b></div>)}</section></section>}
       {isManager && tab === "allocations" && <CostAllocationPanel recipients={data.billRecipients ?? []} allocations={data.allocations ?? []} request={request} setMessage={setMessage} onUpdated={refresh} />}
       {isManager && tab === "corrections" && <CorrectionInbox corrections={data.correctionRequests ?? []} request={request} setMessage={setMessage} onUpdated={refresh} />}
@@ -899,15 +907,135 @@ function PendingInventoryApprovals({ items, request, setMessage, onApproved }: {
 
   return <section className="panel"><h2>Neue Artikel für Inventur freigeben</h2><p className="muted">Prüfe neue Einkaufspositionen, lege ihren Einsatz fest und übernimm sie anschließend in den Katalog.</p>{items.length === 0 ? <p className="muted">Keine neuen Artikel warten auf Freigabe.</p> : <div className="approval-list">{items.map((item) => <form className="approval-form" key={item.id} onSubmit={(event) => void handleSaveDraft(event, item.id)}><div className="approval-heading"><span><b>{item.name}</b><small>{item.quantity}× auf „{item.list.title}“ {item.list.status === "PURCHASED" ? "eingekauft" : "offen"}</small></span><span className="pill">Noch nicht im Inventar</span></div><div className="approval-fields approval-item-fields"><Field name="name" label="Name" initial={item.name} /><Field name="category" label="Kategorie" initial={item.proposedCategory ?? "Sonstiges"} /><Field name="unit" label="Einheit" initial={item.proposedUnit ?? "Flasche"} /></div><div className="approval-fields approval-number-fields"><Field name="packageSize" label="Gebindegröße" type="number" initial={String(item.proposedPackageSize ?? 1)} min="1" /><Field name="reorderLevel" label="Meldebestand" type="number" initial={String(item.proposedReorderLevel ?? 0)} min="0" /><Field name="price" label="Regulärer Preis (EUR)" type="number" step="0.01" initial={((item.proposedPriceCents ?? 0) / 100).toFixed(2)} min="0" /><Field name="helperPrice" label="Helferpreis (EUR)" type="number" step="0.01" initial={((item.proposedHelperPriceCents ?? 0) / 100).toFixed(2)} min="0" /></div><InventoryModeFields item={{ trackInventory: item.proposedTrackInventory, showInMenu: item.proposedShowInMenu }} /><div className="approval-actions"><button className="secondary">Entwurf speichern</button><button type="button" className="primary" onClick={(event) => { const form = event.currentTarget.form; if (form) void approve(form, item.id); }}>Für Inventur freigeben</button></div><small className="muted">Beim Freigeben werden alle aktuellen Eingaben einschließlich Artikelmodus übernommen.</small></form>)}</div>}</section>;
 }
-function ShoppingLists({ lists, request, setMessage, onUpdated }: { lists: ShoppingList[]; request: (path: string, init?: RequestInit) => Promise<unknown>; setMessage: (value: string) => void; onUpdated: () => Promise<void> }) {
+function ShoppingListItemRow({ item, inventoryItem, editing, onStartEditing, onCancelEditing, onSave, onPurchaseUpdate }: {
+  item: ShoppingListItem;
+  inventoryItem?: Item;
+  editing: boolean;
+  onStartEditing: () => void;
+  onCancelEditing: () => void;
+  onSave: (event: FormEvent<HTMLFormElement>, item: ShoppingListItem, inventoryItem?: Item) => void;
+  onPurchaseUpdate: (item: ShoppingListItem) => void;
+}) {
+  const canUsePackages = Boolean(inventoryItem && inventoryItem.packageSize > 1);
+  const packages = canUsePackages ? Math.floor(item.quantity / inventoryItem!.packageSize) : 0;
+  const units = canUsePackages ? item.quantity % inventoryItem!.packageSize : item.quantity;
+  const label = inventoryItem ? `${item.name} · ${formatShoppingQuantity(item.quantity, inventoryItem)}` : `${item.quantity}× ${item.name}`;
+
+  return <article className={`shopping-item ${item.purchased ? "purchased" : ""}`}><div className="shopping-item-row"><span className="shopping-item-copy"><b>{label}</b><span className={`application-status ${item.purchased ? "resolved" : "applied"}`}>{item.purchased ? "Eingekauft" : "Noch offen"}</span>{!item.itemId && <small>Neuer Artikel, noch nicht für Inventur freigegeben</small>}</span><div className="shopping-item-actions"><button type="button" className="secondary compact-button" onClick={onStartEditing} aria-expanded={editing}>Bearbeiten</button><button type="button" className={item.purchased ? "secondary compact-button" : "primary compact-button"} onClick={() => onPurchaseUpdate(item)}>{item.purchased ? "Wieder öffnen" : "Als eingekauft markieren"}</button></div></div>{editing && <form className="shopping-item-edit-form" onSubmit={(event) => onSave(event, item, inventoryItem)}><div className="edit-heading"><b>{item.name} bearbeiten</b><button type="button" className="secondary compact-button" onClick={onCancelEditing}>Abbrechen</button></div>{!item.itemId && <Field name="name" label="Artikelname" initial={item.name} />}{canUsePackages ? <div className="shopping-quantity-fields"><Field name="packages" label="Gebinde" type="number" initial={String(packages)} min="0" /><Field name="units" label={`Einzelstücke (${inventoryItem!.unit})`} type="number" initial={String(units)} min="0" max={String(inventoryItem!.packageSize - 1)} /></div> : <Field name="quantity" label="Menge (Einzelstücke)" type="number" initial={String(item.quantity)} min="1" />}<button className="primary">Änderungen speichern</button></form>}</article>;
+}
+function ShoppingItemCombobox({ inventoryItems, value: itemName, onChange }: { inventoryItems: Item[]; value: string; onChange: (value: string) => void }) {
+  const [suggestionsOpen, setSuggestionsOpen] = useState(false);
+  const searchTerm = itemName.trim().toLocaleLowerCase("de-DE");
+  const suggestions = searchTerm
+    ? inventoryItems.filter((item) => `${item.name} ${item.category} ${item.unit}`.toLocaleLowerCase("de-DE").includes(searchTerm)).slice(0, 8)
+    : [];
+  return <div className="shopping-item-combobox"><label>Artikel<input name="itemName" value={itemName} onChange={(event) => { onChange(event.currentTarget.value); setSuggestionsOpen(true); }} onFocus={() => setSuggestionsOpen(true)} onBlur={() => setSuggestionsOpen(false)} placeholder="Artikel suchen oder neu eingeben" autoComplete="off" required aria-autocomplete="list" aria-expanded={suggestionsOpen && suggestions.length > 0} aria-controls="inventory-item-suggestions" /></label>{suggestionsOpen && suggestions.length > 0 && <div className="shopping-suggestions" id="inventory-item-suggestions" role="list">{suggestions.map((item) => <button type="button" className="shopping-suggestion" onMouseDown={(event) => event.preventDefault()} onClick={() => { onChange(shoppingSuggestion(item)); setSuggestionsOpen(false); }} key={item.id}><b>{item.name}</b><small>{item.category} · {item.unit}</small></button>)}</div>}<small className="muted">Inventarartikel werden vorgeschlagen. Eine freie Eingabe wird als neuer Artikel zur späteren Freigabe angelegt.</small></div>;
+}
+function ShoppingListManager({ lists, inventoryItems, request, setMessage, onUpdated }: { lists: ShoppingList[]; inventoryItems: Item[]; request: <T extends object = { error?: string }>(path: string, init?: RequestInit) => Promise<T>; setMessage: (value: string) => void; onUpdated: () => Promise<void> }) {
   const openLists = lists.filter((list) => list.status === "OPEN");
   const [selectedId, setSelectedId] = useState<string | null>(openLists[0]?.id ?? null);
+  const [itemName, setItemName] = useState("");
+  const [quantityMode, setQuantityMode] = useState<"UNIT" | "PACKAGE">("UNIT");
+  const [editingItemId, setEditingItemId] = useState<string | null>(null);
+  const [now, setNow] = useState(() => Date.now());
   const selected = openLists.find((list) => list.id === selectedId) ?? openLists[0];
-  const changeItem = async (item: ShoppingList["items"][number]) => {
+  const visibleItems = selected?.items.filter((item) => !item.purchased || !item.purchasedAt || now - new Date(item.purchasedAt).getTime() < purchasedItemRetentionMilliseconds) ?? [];
+  const selectedInventoryItem = inventoryItems.find((item) => shoppingSuggestion(item).toLocaleLowerCase("de-DE") === itemName.trim().toLocaleLowerCase("de-DE"));
+  const canOrderPackages = Boolean(selectedInventoryItem && selectedInventoryItem.packageSize > 1);
+  useEffect(() => {
+    if (!canOrderPackages) setQuantityMode("UNIT");
+  }, [canOrderPackages]);
+  useEffect(() => {
+    const interval = window.setInterval(() => setNow(Date.now()), 60_000);
+    return () => window.clearInterval(interval);
+  }, []);
+  const itemPayload = (form: HTMLFormElement) => {
+    const name = value(form, "itemName").trim();
+    const normalizedName = name.toLocaleLowerCase("de-DE");
+    const inventoryItem = inventoryItems.find((item) => shoppingSuggestion(item).toLocaleLowerCase("de-DE") === normalizedName);
+    return {
+      itemId: inventoryItem?.id,
+      name: inventoryItem?.name ?? name,
+      quantity: Number(value(form, "quantity")),
+      quantityMode: inventoryItem?.packageSize && inventoryItem.packageSize > 1 ? quantityMode : "UNIT",
+    };
+  };
+  const resetItemForm = (form: HTMLFormElement) => {
+    form.reset();
+    setItemName("");
+    setQuantityMode("UNIT");
+  };
+  const addItem = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const form = event.currentTarget;
+    if (!form.reportValidity()) return;
+    try {
+      const payload = itemPayload(form);
+      if (selected) {
+        await request(`/api/shopping-lists/${selected.id}/items`, { method: "POST", body: JSON.stringify(payload) });
+        setMessage(`„${payload.name}“ wurde zu „${selected.title}“ hinzugefügt.`);
+      } else {
+        const created = await request<{ id: string }>("/api/shopping-lists", { method: "POST", body: JSON.stringify({ title: "Einkaufsliste", items: [payload] }) });
+        setSelectedId(created.id);
+        setMessage("Die Einkaufsliste wurde angelegt und die erste Position hinzugefügt.");
+      }
+      resetItemForm(form);
+      await onUpdated();
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Einkaufsposition konnte nicht hinzugefügt werden.");
+    }
+  };
+  const createSpecialList = async (form: HTMLFormElement) => {
+    if (!form.reportValidity()) return;
+    const title = value(form, "specialListTitle").trim();
+    if (title.length < 2) {
+      setMessage("Gib für die Sonderliste einen Namen mit mindestens zwei Zeichen ein.");
+      return;
+    }
+    try {
+      const payload = itemPayload(form);
+      const created = await request<{ id: string }>("/api/shopping-lists", { method: "POST", body: JSON.stringify({ title, items: [payload] }) });
+      setSelectedId(created.id);
+      setMessage(`Die Sonderliste „${title}“ wurde mit der ersten Position angelegt.`);
+      resetItemForm(form);
+      await onUpdated();
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Sonderliste konnte nicht angelegt werden.");
+    }
+  };
+  const updatePurchaseState = async (item: ShoppingListItem) => {
     if (!selected) return;
     try {
       await request(`/api/shopping-lists/${selected.id}/items/${item.id}`, { method: "PATCH", body: JSON.stringify({ purchased: !item.purchased }) });
+      setEditingItemId(null);
       setMessage(item.purchased ? "Position wieder geöffnet." : "Position als eingekauft markiert.");
+      await onUpdated();
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Einkaufsposition konnte nicht aktualisiert werden.");
+    }
+  };
+  const updateItem = async (event: FormEvent<HTMLFormElement>, item: ShoppingListItem, inventoryItem?: Item) => {
+    event.preventDefault();
+    const form = event.currentTarget;
+    if (!form.reportValidity() || !selected) return;
+    const quantity = inventoryItem && inventoryItem.packageSize > 1
+      ? Number(value(form, "packages")) * inventoryItem.packageSize + Number(value(form, "units"))
+      : Number(value(form, "quantity"));
+    if (!Number.isSafeInteger(quantity) || quantity < 1) {
+      setMessage("Gib mindestens ein Gebinde oder ein Einzelstück ein.");
+      return;
+    }
+    try {
+      await request(`/api/shopping-lists/${selected.id}/items/${item.id}`, {
+        method: "PATCH",
+        body: JSON.stringify({
+          ...(item.itemId ? {} : { name: value(form, "name") }),
+          quantity,
+          quantityMode: "UNIT",
+        }),
+      });
+      setEditingItemId(null);
+      setMessage(`„${item.name}“ wurde aktualisiert.`);
       await onUpdated();
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Einkaufsposition konnte nicht aktualisiert werden.");
@@ -917,6 +1045,7 @@ function ShoppingLists({ lists, request, setMessage, onUpdated }: { lists: Shopp
     if (!selected) return;
     try {
       await request(`/api/shopping-lists/${selected.id}`, { method: "PATCH", body: JSON.stringify({ markAllPurchased: true }) });
+      setEditingItemId(null);
       setMessage("Die gesamte Einkaufsliste wurde als eingekauft markiert.");
       await onUpdated();
     } catch (error) {
@@ -924,7 +1053,12 @@ function ShoppingLists({ lists, request, setMessage, onUpdated }: { lists: Shopp
     }
   };
 
-  return <section className="panel"><h2>Offene Listen</h2>{openLists.length === 0 ? <p className="muted">Zurzeit gibt es keine offenen Einkaufslisten.</p> : <><div className="shopping-list-tabs">{openLists.map((list) => <button type="button" className={selected?.id === list.id ? "selected" : ""} onClick={() => setSelectedId(list.id)} key={list.id}>{list.title}<small>{list.items.filter((item) => !item.purchased).length} offen</small></button>)}</div>{selected && <div className="shopping-list-detail"><div className="list-detail-heading"><div><h3>{selected.title}</h3><p className="muted">{selected.items.filter((item) => item.purchased).length} von {selected.items.length} Positionen eingekauft</p></div><button type="button" className="primary" onClick={() => void completeList()}>Alles eingekauft</button></div><div className="shopping-items">{selected.items.map((item) => <label className={`shopping-item ${item.purchased ? "purchased" : ""}`} key={item.id}><input type="checkbox" checked={item.purchased} onChange={() => void changeItem(item)} /><span><b>{item.quantity}× {item.name}</b><small>{item.purchased ? "Eingekauft" : "Noch offen"}{!item.itemId ? " · Neuer Artikel, noch nicht für Inventur freigegeben" : ""}</small></span></label>)}</div></div>}</>}</section>;
+  const selectList = (id: string) => {
+    setSelectedId(id);
+    setEditingItemId(null);
+  };
+
+  return <section className="content two-column"><section className="panel shopping-composer"><h1>{selected ? "Position hinzufügen" : "Einkaufsliste starten"}</h1><p className="muted">{selected ? "Neue Eingaben werden direkt der ausgewählten offenen Liste hinzugefügt." : "Lege mit der ersten Position deine reguläre Einkaufsliste an."}</p><form onSubmit={(event) => void addItem(event)}>{selected && <label>Aktive Einkaufsliste<select value={selected.id} onChange={(event) => selectList(event.currentTarget.value)}>{openLists.map((list) => <option value={list.id} key={list.id}>{list.title} · {list.items.filter((item) => !item.purchased).length} offen</option>)}</select></label>}<ShoppingItemCombobox inventoryItems={inventoryItems} value={itemName} onChange={setItemName} /><div className="shopping-quantity-fields"><label>Menge<input name="quantity" type="number" defaultValue="1" min="1" required /></label><label>Einheit<select value={quantityMode} onChange={(event) => setQuantityMode(event.currentTarget.value as "UNIT" | "PACKAGE")} disabled={!canOrderPackages}><option value="UNIT">{selectedInventoryItem ? `Einzelstück (${selectedInventoryItem.unit})` : "Einzelstück"}</option>{canOrderPackages && <option value="PACKAGE">Gebinde ({selectedInventoryItem!.packageSize} {selectedInventoryItem!.unit})</option>}</select></label></div><button className="primary">{selected ? "Zur Liste hinzufügen" : "Einkaufsliste starten"}</button><details className="special-shopping-list"><summary>Sonderliste für ein besonderes Thema anlegen</summary><label>Name der Sonderliste<input name="specialListTitle" placeholder="z. B. Sommerfest" /></label><button type="button" className="secondary" onClick={(event) => { const form = event.currentTarget.form; if (form) void createSpecialList(form); }}>Sonderliste mit dieser Position anlegen</button></details></form></section><section className="panel"><h2>Offene Listen</h2>{openLists.length === 0 ? <p className="muted">Nach der ersten Eingabe erscheint deine Einkaufsliste hier.</p> : <><div className="shopping-list-tabs">{openLists.map((list) => <button type="button" className={selected?.id === list.id ? "selected" : ""} onClick={() => selectList(list.id)} key={list.id}>{list.title}<small>{list.items.filter((item) => !item.purchased).length} offen</small></button>)}</div>{selected && <div className="shopping-list-detail"><div className="list-detail-heading"><div><h3>{selected.title}</h3><p className="muted">{visibleItems.filter((item) => item.purchased).length} von {visibleItems.length} sichtbaren Positionen eingekauft</p><small className="muted">Eingekaufte Positionen werden nach einer Stunde ausgeblendet.</small></div><button type="button" className="primary" onClick={() => void completeList()}>Alles eingekauft</button></div><div className="shopping-items">{visibleItems.map((item) => <ShoppingListItemRow item={item} inventoryItem={item.itemId ? inventoryItems.find((candidate) => candidate.id === item.itemId) : undefined} editing={editingItemId === item.id} onStartEditing={() => setEditingItemId(item.id)} onCancelEditing={() => setEditingItemId(null)} onSave={updateItem} onPurchaseUpdate={updatePurchaseState} key={item.id} />)}</div></div>}</>}</section></section>;
 }
 function ManagerOverview({ data }: { data: Bootstrap }) { return <section className="split"><section className="panel"><h2>Offene Einkäufe</h2>{(data.shoppingLists ?? []).slice(0, 3).map((list) => <p key={list.id}><b>{list.title}</b><br /><span className="muted">{list.items.map((item) => `${item.quantity}× ${item.name}`).join(", ")}</span></p>)}</section><section className="panel"><h2>Offene Rechnungen</h2>{(data.bills ?? []).slice(0, 3).map((bill) => <p key={bill.id}><b>{bill.recipient.name}</b><br /><span className="muted">{formatCurrency(bill.totalCents)} · {bill.status === "OPEN" ? "offen" : "bezahlt"}</span></p>)}</section></section>; }
 function RecentConsumptions({ consumptions, request, setMessage, onUpdated }: { consumptions: Consumption[]; request: (path: string, init?: RequestInit) => Promise<unknown>; setMessage: (value: string) => void; onUpdated: () => Promise<void> }) {

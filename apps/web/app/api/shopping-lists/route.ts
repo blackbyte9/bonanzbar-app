@@ -3,14 +3,11 @@ import { z } from "zod";
 import { requirePermission } from "@/lib/auth";
 import { jsonError, requestJson } from "@/lib/http";
 import { prisma } from "@/lib/prisma";
+import { shoppingItemInputSchema, shoppingItemQuantity } from "@/lib/shopping-items";
 
 const listSchema = z.object({
   title: z.string().trim().min(2).max(100),
-  items: z.array(z.object({
-    itemId: z.string().cuid().optional(),
-    name: z.string().trim().min(2).max(100),
-    quantity: z.coerce.number().int().min(1).max(10000),
-  })).min(1),
+  items: z.array(shoppingItemInputSchema).min(1),
 });
 
 export async function POST(request: Request) {
@@ -26,17 +23,23 @@ export async function POST(request: Request) {
     if (inventoryById.size !== new Set(requestedItemIds).size) {
       return NextResponse.json({ error: "Ein ausgewählter Artikel wird nicht im Inventar geführt und kann nicht nachbestellt werden." }, { status: 400 });
     }
+    if (input.items.some((item) => item.quantityMode === "PACKAGE" && !item.itemId)) {
+      return NextResponse.json({ error: "Gebinde können nur für bekannte Inventarartikel gewählt werden." }, { status: 400 });
+    }
 
     const list = await prisma.shoppingList.create({
       data: {
         title: input.title,
         createdBy: user.id,
         items: {
-          create: input.items.map((item) => ({
-            itemId: item.itemId,
-            name: item.itemId ? inventoryById.get(item.itemId)!.name : item.name,
-            quantity: item.quantity,
-          })),
+          create: input.items.map((item) => {
+            const inventoryItem = item.itemId ? inventoryById.get(item.itemId) : undefined;
+            return {
+              itemId: item.itemId,
+              name: inventoryItem?.name ?? item.name,
+              quantity: shoppingItemQuantity(item, inventoryItem?.packageSize),
+            };
+          }),
         },
       },
       include: { items: true },
