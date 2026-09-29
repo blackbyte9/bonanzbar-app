@@ -311,7 +311,17 @@ textarea { resize:vertical; }
 .tile-safe :where(h1, h2, h3, p, b, strong, small, span, label, legend), :where(.login-card, .role-grid button, .metric, .panel, .member-edit-form, .count-item, .shopping-item, .event-card, .duty-card, .note-card, .role-overview, .action-tile) :where(h1, h2, h3, p, b, strong, small, span, label, legend) { min-width:0; overflow-wrap:anywhere; }
 :where(.table-row, .row, .member-summary, .editable-inventory-row, .pricing-user, .event-heading, .duty-card, .application-row, .note-heading, .list-detail-heading, .approval-heading, .edit-heading, .menu-context, .social-post, .social-comment, .task-row, .ledger-row) > * { min-width:0; }
 @media (max-width:700px) { .role-overview { align-items:flex-start; flex-direction:column; } .role-overview > span { text-align:left; } }
-@media (max-width:700px) { .home-content { padding-top:1.35rem; } .home-heading { align-items:flex-start; flex-direction:column; } .home-heading .secondary { width:100%; } .action-menu { grid-template-columns:1fr; } .action-tile { min-height:9.75rem; } }
+@media (max-width:700px) {
+  .home-content { padding-top:1.35rem; }
+  .home-heading { align-items:flex-start; flex-direction:column; }
+  .home-heading .secondary { width:100%; }
+  .action-menu { grid-template-columns:repeat(2, minmax(0, 1fr)); gap:.65rem; }
+  .action-tile { min-height:8.75rem; gap:.65rem; padding:.85rem; }
+  .action-number { font-size:1.25rem; }
+  .action-copy strong { font-size:1rem; }
+  .action-copy small { font-size:.72rem; line-height:1.25; }
+  .action-status { max-width:5.75rem; padding:.25rem .35rem; font-size:.56rem; text-align:right; }
+}
 @media (max-width:700px) { .action-group-heading { align-items:flex-start; flex-direction:column; gap:.25rem; } .action-group-heading p { text-align:left; } }
 @media (max-width:700px) { .event-links, .public-links { gap:.55rem; } .social-post header, .social-comment, .task-row, .ledger-row { align-items:stretch; flex-direction:column; } .task-row label { width:100%; } .ledger-row > span:last-child { justify-content:flex-start; text-align:left; } .ledger-totals { grid-template-columns:1fr; } .public-header { min-height:70px; } .public-event { grid-template-columns:1fr; } .public-event > a { width:min(220px, 100%); } }
 @media (prefers-reduced-motion:reduce) { .welcome-screen, .welcome-screen * { animation:none!important; } }
