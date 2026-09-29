@@ -5,14 +5,20 @@
     "version": "0.1.0",
     "orientation": "portrait",
     "userInterfaceStyle": "light",
-    "splash": {
-      "backgroundColor": "#f5f3ed"
-    },
     "android": {
       "package": "com.bonanzbar.app"
     },
     "ios": {
       "bundleIdentifier": "com.bonanzbar.app"
-    }
+    },
+    "plugins": [
+      "expo-status-bar",
+      [
+        "expo-splash-screen",
+        {
+          "backgroundColor": "#f5f3ed"
+        }
+      ]
+    ]
   }
 }

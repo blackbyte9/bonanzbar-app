@@ -80,11 +80,10 @@ In der Administrationsansicht öffnet ein Klick auf einen Eintrag der Mitglieder
 Starte die mobile App in einem weiteren Terminal:
 
 ```powershell
-$env:EXPO_PUBLIC_API_URL="http://192.168.x.x:3000" # LAN-Adresse des Computers für ein physisches Gerät verwenden
 npm.cmd run dev:mobile
 ```
 
-Für einen Android-Emulator ist der Host üblicherweise über `http://10.0.2.2:3000` erreichbar; für den iOS-Simulator verwende `http://localhost:3000`. Ohne `EXPO_PUBLIC_API_URL` verwendet die App standardmäßig localhost. Produktive mobile Builds verwenden dieselbe E-Mail-/Passwortanmeldung wie die Web-App.
+Der Startbefehl verwendet bewusst den Expo-LAN-Modus. Die native App bindet die responsive Bonanzbar-Web-App ein, sodass Kachel-Startseite, Anmeldung und alle Rollenfunktionen auf Android und iPhone genau dem geprüften Web-Stand entsprechen. Auf einem physischen Gerät im selben WLAN wird die LAN-Adresse des Metro-Servers automatisch als lokale Web-App-Adresse auf Port 3000 verwendet. Für einen Android-Emulator setze vor dem Start `$env:EXPO_PUBLIC_API_URL="http://10.0.2.2:3000"`; für den iOS-Simulator verwende `http://localhost:3000`. Lokale Sonderumgebungen, Preview und Production müssen `EXPO_PUBLIC_API_URL` explizit auf die jeweilige HTTPS-Web-App setzen.
 
 ## Mobile Apps veröffentlichen
 

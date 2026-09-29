@@ -1,193 +1,57 @@
-import { formatCurrency, roleLabels, splitQuantityIntoPackages, type Role } from "@bonanzbar/shared";
+import Constants from "expo-constants";
 import { StatusBar } from "expo-status-bar";
-import { useEffect, useMemo, useState } from "react";
-import {
-  ActivityIndicator,
-  Alert,
-  FlatList,
-  Image,
-  Pressable,
-  SafeAreaView,
-  StyleSheet,
-  Text,
-  TextInput,
-  View,
-} from "react-native";
+import { useState } from "react";
+import { ActivityIndicator, Pressable, SafeAreaView, StyleSheet, Text, View } from "react-native";
+import { WebView } from "react-native-webview";
 
-type Item = { id: string; name: string; category: string; unit?: string; packageSize?: number; priceCents?: number; helperPriceCents?: number; trackInventory?: boolean; showInMenu?: boolean; effectivePriceCents: number; reorderLevel?: number; onHand?: number };
-type Snapshot = { user: { name: string; roles: Role[] }; inventory: Item[] };
+const configuredWebAppUrl = process.env.EXPO_PUBLIC_API_URL?.replace(/\/+$/, "");
+const metroHost = Constants.expoConfig?.hostUri?.split(":")[0];
+const canReachMetroHost = metroHost && !["127.0.0.1", "localhost", "0.0.0.0", "::1"].includes(metroHost);
+const webAppUrl = configuredWebAppUrl ?? (__DEV__ && canReachMetroHost ? `http://${metroHost}:3000` : undefined);
 
-const API_URL = process.env.EXPO_PUBLIC_API_URL ?? "http://localhost:3000";
-const demoTokens: Record<Role, string> = {
-  ADMIN: "demo-admin-local-only",
-  MANAGER: "demo-manager-local-only",
-  USER: "demo-member-local-only",
-  GUEST: "demo-guest-local-only",
-};
-const formatStockQuantity = (quantity: number, item: Pick<Item, "unit" | "packageSize">) => {
-  const packageSize = item.packageSize ?? 1;
-  if (packageSize === 1) return `${quantity}`;
-  const { packages, units } = splitQuantityIntoPackages(quantity, packageSize);
-  return `${packages} Geb.${units > 0 ? ` + ${units}` : ""}`;
-};
+function LoadingView() {
+  return <View style={styles.centered}><ActivityIndicator color="#f4ca6b" size="large" /><Text style={styles.loadingText}>Bonanzbar wird geladen...</Text></View>;
+}
 
 export default function App() {
-  const [role, setRole] = useState<Role>("USER");
-  const [accessToken, setAccessToken] = useState<string | null>(null);
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
-  const [data, setData] = useState<Snapshot | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [selectedItem, setSelectedItem] = useState<Item | null>(null);
-  const [quantity, setQuantity] = useState("1");
+  const [loadError, setLoadError] = useState<string | null>(null);
 
-  const demoMode = __DEV__;
-  const token = accessToken ?? (demoMode ? demoTokens[role] : null);
-  const api = async (path: string, init?: RequestInit) => {
-    const response = await fetch(`${API_URL}${path}`, {
-      ...init,
-      headers: {
-        "Content-Type": "application/json",
-        ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : token ? { "x-bonanzbar-token": token } : {}),
-        ...(init?.headers ?? {}),
-      },
-    });
-    const body = await response.json();
-    if (!response.ok) throw new Error(body.error ?? "Anfrage fehlgeschlagen");
-    return body;
-  };
-  const load = async () => {
-    setLoading(true);
-    try {
-      setData(await api("/api/bootstrap"));
-    } catch (error) {
-      Alert.alert("Bonanzbar nicht erreichbar", error instanceof Error ? error.message : "Prüfe die API-Adresse.");
-    } finally {
-      setLoading(false);
-    }
-  };
-  useEffect(() => {
-    if (token) void load();
-  }, [role, token]);
-
-  const signIn = async () => {
-    setLoading(true);
-    try {
-      const response = await fetch(`${API_URL}/api/auth/login`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, password, mobile: true }),
-      });
-      const body = await response.json();
-      if (!response.ok || !body.accessToken) throw new Error(body.error ?? "Anmeldung fehlgeschlagen.");
-      setAccessToken(body.accessToken);
-      setRole(body.user.roles[0]);
-      setPassword("");
-    } catch (error) {
-      Alert.alert("Anmeldung fehlgeschlagen", error instanceof Error ? error.message : "Bitte versuche es erneut.");
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const isGuest = data?.user.roles.length === 1 && data.user.roles[0] === "GUEST";
-  const canRecordConsumption = !isGuest && (data?.user.roles.includes("USER") ?? role === "USER");
-  const menuItems = useMemo(() => data?.inventory.filter((item) => item.showInMenu !== false) ?? [], [data]);
-  const displayItems = isGuest ? menuItems : data?.inventory ?? [];
-  const lowStock = useMemo(() => data?.inventory.filter((item) => item.trackInventory !== false && (item.onHand ?? 0) <= (item.reorderLevel ?? 0)).length ?? 0, [data]);
-  const recordDrink = async () => {
-    if (!selectedItem) return;
-    try {
-      await api("/api/consumptions", { method: "POST", body: JSON.stringify({ itemId: selectedItem.id, quantity: Number(quantity) }) });
-      Alert.alert("Zum Konto hinzugefügt", `${quantity}× ${selectedItem.name} wurde für dich eingetragen.`);
-      setSelectedItem(null);
-      setQuantity("1");
-    } catch (error) {
-      Alert.alert("Getränk konnte nicht eingetragen werden", error instanceof Error ? error.message : "Bitte versuche es erneut.");
-    }
-  };
-
-  if (!demoMode && !accessToken) {
+  if (!webAppUrl || loadError) {
     return <SafeAreaView style={styles.page}>
       <StatusBar style="light" />
-      <View style={styles.login}>
-        <Image source={require("./assets/bonanzbar-logo.png")} style={styles.loginLogo} resizeMode="contain" />
-        <Text style={styles.loginTitle}>Willkommen zurück</Text>
-        <Text style={styles.muted}>Melde dich mit deinem Bonanzbar-Konto an.</Text>
-        <TextInput style={styles.loginInput} value={email} onChangeText={setEmail} keyboardType="email-address" autoCapitalize="none" autoComplete="email" placeholder="E-Mail-Adresse" placeholderTextColor="#8d8375" />
-        <TextInput style={styles.loginInput} value={password} onChangeText={setPassword} secureTextEntry autoComplete="current-password" placeholder="Passwort" placeholderTextColor="#8d8375" />
-        <Pressable style={styles.primary} onPress={() => void signIn()} disabled={loading}><Text style={styles.primaryText}>{loading ? "Anmelden..." : "Anmelden"}</Text></Pressable>
+      <View style={styles.errorCard}>
+        <Text style={styles.kicker}>BONANZBAR</Text>
+        <Text style={styles.title}>{loadError ? "Verbindung nicht möglich" : "Web-App-Adresse fehlt"}</Text>
+        <Text style={styles.message}>{loadError ?? "Starte Expo Go im LAN-Modus oder setze EXPO_PUBLIC_API_URL auf die HTTPS-Adresse der Bonanzbar-Web-App."}</Text>
+        <Text style={styles.detail}>{webAppUrl ? `Ziel: ${webAppUrl}` : "Für lokale Tests müssen Telefon und Rechner im selben WLAN sein."}</Text>
+        {loadError && <Pressable style={styles.retry} onPress={() => setLoadError(null)}><Text style={styles.retryText}>Erneut versuchen</Text></Pressable>}
       </View>
     </SafeAreaView>;
   }
 
-  return (
-    <SafeAreaView style={styles.page}>
-      <StatusBar style="light" />
-      <View style={styles.header}>
-        <View style={styles.brand}><Image source={require("./assets/bonanzbar-logo.png")} style={styles.logo} resizeMode="contain" /><View style={styles.brandCopy}><Text style={styles.kicker}>BONANZBAR</Text><Text style={styles.title}>Die Bar in deiner Hand.</Text></View></View>
-        <Pressable onPress={() => void load()} style={styles.refresh}><Text style={styles.refreshText}>{loading ? "..." : "Aktualisieren"}</Text></Pressable>
-      </View>
-      {demoMode && <View style={styles.roles}>
-        {(["USER", "MANAGER", "ADMIN", "GUEST"] as Role[]).map((candidate) => <Pressable key={candidate} onPress={() => setRole(candidate)} style={[styles.role, candidate === role && styles.roleSelected]}><Text style={[styles.roleText, candidate === role && styles.roleTextSelected]}>{roleLabels[candidate]}</Text></Pressable>)}
-      </View>}
-      {loading && !data ? <View style={styles.loader}><ActivityIndicator color="#275c46" /></View> : (
-        <FlatList
-          data={displayItems}
-          keyExtractor={(item) => item.id}
-          contentContainerStyle={styles.list}
-          ListHeaderComponent={<>
-            <View style={styles.welcome}><Text style={styles.welcomeText}>Angemeldet als {data?.user.name ?? roleLabels[role]}</Text><Text style={styles.welcomeDetail}>{isGuest ? "Hier siehst du die aktuelle Getränkekarte mit Gastpreisen." : canRecordConsumption ? "Tippe einen Artikel an, um ihn deinem Konto hinzuzufügen." : lowStock === 1 ? "1 Artikel braucht Aufmerksamkeit." : `${lowStock} Artikel brauchen Aufmerksamkeit.`}</Text></View>
-            {selectedItem && <View style={styles.consumeCard}><Text style={styles.cardTitle}>{selectedItem.name} hinzufügen</Text><Text style={styles.muted}>{formatCurrency(selectedItem.effectivePriceCents)} pro Stück</Text><View style={styles.consumeRow}><TextInput style={styles.input} keyboardType="number-pad" value={quantity} onChangeText={setQuantity} /><Pressable style={styles.primary} onPress={() => void recordDrink()}><Text style={styles.primaryText}>Eintragen</Text></Pressable><Pressable onPress={() => setSelectedItem(null)}><Text style={styles.cancel}>Abbrechen</Text></Pressable></View></View>}
-            {!canRecordConsumption && <View style={styles.managerNote}><Text style={styles.cardTitle}>Betriebsansicht</Text><Text style={styles.muted}>Für Zählungen, Einkaufslisten, Rechnungen und Zeitraumberichte nutze die Web-Verwaltung.</Text></View>}
-            <Text style={styles.sectionTitle}>{isGuest ? "Getränkekarte" : "Verfügbares Inventar"}</Text>
-          </>}
-          renderItem={({ item }) => <Pressable style={styles.item} onPress={() => canRecordConsumption && item.showInMenu !== false ? setSelectedItem(item) : undefined}><View style={styles.itemDetails}><Text style={styles.itemName}>{item.name}</Text><Text style={styles.muted}>{item.category} · {formatCurrency(item.effectivePriceCents)}</Text></View>{!isGuest && item.trackInventory !== false && <View style={styles.stock}><Text style={[styles.stockValue, (item.onHand ?? 0) <= (item.reorderLevel ?? 0) && styles.low]}>{formatStockQuantity(item.onHand ?? 0, item)}</Text><Text style={styles.muted}>{item.packageSize === 1 ? item.unit : `${item.packageSize} ${item.unit} je Geb.`}</Text></View>}{!isGuest && item.trackInventory === false && <Text style={styles.muted}>Nicht inventargeführt</Text>}</Pressable>}
-          ListEmptyComponent={<Text style={styles.muted}>Kein Inventar verfügbar. Starte die Web-API und fülle die Beispieldaten ein.</Text>}
-        />
-      )}
-    </SafeAreaView>
-  );
+  return <SafeAreaView style={styles.page}>
+    <StatusBar style="light" />
+    <WebView
+      source={{ uri: webAppUrl }}
+      startInLoadingState
+      renderLoading={() => <LoadingView />}
+      onError={(event) => setLoadError(event.nativeEvent.description || "Die Bonanzbar-Web-App konnte nicht geladen werden.")}
+      onHttpError={(event) => setLoadError(`Die Bonanzbar-Web-App antwortet mit HTTP ${event.nativeEvent.statusCode}.`)}
+      onLoadStart={() => setLoadError(null)}
+      sharedCookiesEnabled
+    />
+  </SafeAreaView>;
 }
 
 const styles = StyleSheet.create({
   page: { flex: 1, backgroundColor: "#12100e" },
-  login: { flex: 1, justifyContent: "center", padding: 28, gap: 14 },
-  loginLogo: { width: "100%", height: 120, marginBottom: 18 },
-  loginTitle: { color: "#f4ca6b", fontSize: 27, fontWeight: "700" },
-  loginInput: { color: "#f7f1e4", backgroundColor: "#1c1916", borderWidth: 1, borderColor: "#655846", borderRadius: 3, paddingHorizontal: 13, paddingVertical: 12 },
-  header: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingHorizontal: 20, paddingTop: 20, paddingBottom: 16, backgroundColor: "#8d3216", borderBottomWidth: 2, borderBottomColor: "#c8a456" },
-  brand: { flexDirection: "row", alignItems: "center", flex: 1, minWidth: 0, marginRight: 10 },
-  brandCopy: { flexShrink: 1, minWidth: 0 },
-  logo: { width: 50, height: 42, marginRight: 10 },
-  kicker: { color: "#f2ce78", letterSpacing: 2, fontSize: 11, fontWeight: "700" },
-  title: { color: "#fff8ed", flexShrink: 1, fontSize: 27, fontWeight: "700", marginTop: 3 },
-  refresh: { borderWidth: 1, borderColor: "#f2ce78", paddingHorizontal: 11, paddingVertical: 7, borderRadius: 3 },
-  refreshText: { color: "#fff8ed", fontWeight: "700", fontSize: 12 },
-  roles: { flexDirection: "row", flexWrap: "wrap", paddingHorizontal: 20, gap: 7, paddingBottom: 15, paddingTop: 15, backgroundColor: "#1c1916" },
-  role: { paddingVertical: 7, paddingHorizontal: 11, borderRadius: 3, backgroundColor: "#29231d", borderWidth: 1, borderColor: "#4d4233" },
-  roleSelected: { backgroundColor: "#8d3216", borderColor: "#c8a456" },
-  roleText: { fontSize: 12, color: "#d8cfbf", fontWeight: "700" },
-  roleTextSelected: { color: "#ffffff" },
-  loader: { flex: 1, alignItems: "center", justifyContent: "center" },
-  list: { padding: 20, paddingTop: 4, gap: 9 },
-  welcome: { backgroundColor: "#8d3216", borderWidth: 1, borderColor: "#c8a456", borderRadius: 4, padding: 18, marginBottom: 10 },
-  welcomeText: { color: "#fffaf0", fontWeight: "700", fontSize: 17 },
-  welcomeDetail: { color: "#f3d7bd", marginTop: 5, lineHeight: 20 },
-  managerNote: { backgroundColor: "#1c1916", borderWidth: 1, borderColor: "#4d4233", padding: 15, borderRadius: 4, marginBottom: 10 },
-  consumeCard: { backgroundColor: "#2b2017", borderWidth: 1, borderColor: "#a57838", padding: 15, borderRadius: 4, marginBottom: 10 },
-  cardTitle: { color: "#f4ca6b", fontWeight: "700", fontSize: 15 },
-  muted: { color: "#b9b0a2", marginTop: 3, fontSize: 12 },
-  consumeRow: { flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: 9, marginTop: 12 },
-  input: { color: "#f7f1e4", backgroundColor: "#120f0d", borderWidth: 1, borderColor: "#80652e", borderRadius: 3, paddingHorizontal: 10, paddingVertical: 8, width: 52 },
-  primary: { backgroundColor: "#8d3216", borderWidth: 1, borderColor: "#c17036", paddingVertical: 9, paddingHorizontal: 13, borderRadius: 3 },
-  primaryText: { color: "white", fontWeight: "700", fontSize: 12 },
-  cancel: { color: "#f1c86e", fontWeight: "700", fontSize: 12 },
-  sectionTitle: { fontWeight: "700", fontSize: 16, color: "#f4ca6b", marginTop: 8, marginBottom: 2 },
-  item: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", minWidth: 0, backgroundColor: "#1c1916", borderWidth: 1, borderColor: "#4d4233", borderRadius: 4, padding: 15 },
-  itemDetails: { flex: 1, flexShrink: 1, minWidth: 0 },
-  itemName: { color: "#f7f1e4", flexShrink: 1, fontWeight: "700", fontSize: 15 },
-  stock: { alignItems: "flex-end", flexShrink: 1, minWidth: 0, marginLeft: 10 },
-  stockValue: { color: "#f1c86e", fontSize: 20, fontWeight: "700" },
-  low: { color: "#ff9a58" },
+  centered: { flex: 1, alignItems: "center", justifyContent: "center", gap: 14, padding: 28 },
+  loadingText: { color: "#f7f1e4", fontSize: 15, fontWeight: "700" },
+  errorCard: { flex: 1, justifyContent: "center", padding: 28, gap: 12 },
+  kicker: { color: "#f4ca6b", fontSize: 12, fontWeight: "700", letterSpacing: 2 },
+  title: { color: "#fff8ed", fontSize: 27, fontWeight: "700" },
+  message: { color: "#f3d7bd", fontSize: 15, lineHeight: 22 },
+  detail: { color: "#b9b0a2", fontSize: 13, lineHeight: 19 },
+  retry: { alignSelf: "flex-start", marginTop: 8, borderColor: "#f4ca6b", borderRadius: 4, borderWidth: 1, paddingHorizontal: 14, paddingVertical: 10 },
+  retryText: { color: "#f4ca6b", fontSize: 13, fontWeight: "700" },
 });
