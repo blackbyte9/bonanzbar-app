@@ -8,6 +8,8 @@
     "start": "next start",
     "typecheck": "tsc --noEmit",
     "test": "tsx --test tests/demo-mode-parity.test.ts tests/jimdo-program.test.ts",
+    "test:e2e": "playwright test",
+    "test:ux": "playwright test e2e/dashboard.spec.ts",
     "db:generate": "prisma generate",
     "db:migrate": "node scripts/prisma-with-local-env.cjs migrate dev --name development",
     "db:deploy": "node scripts/prisma-with-local-env.cjs migrate deploy",
@@ -23,6 +25,7 @@
     "zod": "^3.24.2"
   },
   "devDependencies": {
+    "@playwright/test": "^1.63.0",
     "@types/node": "^22.13.10",
     "@types/react": "^19.0.10",
     "@types/react-dom": "^19.0.4",

@@ -35,6 +35,7 @@ npm.cmd run db:deploy
 npm.cmd run db:environment -- development
 npm.cmd run db:seed
 npm.cmd test
+npm.cmd run test:e2e
 npm.cmd run dev:web
 ```
 
@@ -55,6 +56,23 @@ npm.cmd run db:environment -- show
 Die Ausgabe muss sowohl bei **Erwartete lokale Umgebung** als auch bei **Datenbankmarker** `development` zeigen. `npm.cmd run db:seed` prüft anschließend **beides**: `BONANZBAR_DATABASE_ENVIRONMENT="development"` in `.env.local` und den Datenbankmarker. Weicht einer der Werte ab oder fehlt der Marker, bricht der Seed ab, bevor er Daten löscht. Der Marker wird absichtlich nicht vom Seed selbst gesetzt, damit ein versehentlich auf Production zeigendes `.env.local` nicht automatisch freigegeben wird.
 
 `npm.cmd run db:seed` löscht danach den Inhalt der so markierten Entwicklungsdatenbank und legt die Beispieldaten neu an; gegen Production darf dieser Befehl niemals ausgeführt werden.
+
+### UX-Regressionstests
+
+`npm.cmd run test:e2e` startet eine isolierte lokale Next.js-Instanz auf Port `3100` mit explizit aktivierter lokaler Demo-Anmeldung und prüft die wichtigsten Browser-Nutzerwege mit Playwright: Rollen-Dashboards, mobile Zwei-Spalten-Kacheln und Bereichsfilter, Korrekturen, bestätigte Dienste, Notiz-Tags, Gastgrenzen und die interne Bildvorschau. Die Tests verwenden ausschließlich lesende Demo-Abläufe und verändern keine Bar-Daten.
+
+Für den ersten lokalen Lauf muss Chromium einmalig heruntergeladen werden:
+
+```powershell
+npx.cmd playwright install chromium
+```
+
+Ist bereits eine geeignete Web-App mit aktivierter lokaler Demo-Anmeldung gestartet, kann sie gezielt verwendet werden:
+
+```powershell
+$env:E2E_BASE_URL="http://localhost:3000"
+npm.cmd run test:e2e
+```
 
 Öffne anschließend [http://localhost:3000](http://localhost:3000). In der lokalen Entwicklung stehen vorbereitete Demo-Rollen zur Verfügung:
 
