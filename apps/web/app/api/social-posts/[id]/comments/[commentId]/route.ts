@@ -7,6 +7,9 @@ import { prisma } from "@/lib/prisma";
 export async function DELETE(request: Request, context: { params: Promise<{ id: string; commentId: string }> }) {
   const user = await authenticate(request);
   if (user instanceof Response) return user;
+  if (hasRole(user.roles, "GUEST") && !hasRole(user.roles, "USER")) {
+    return NextResponse.json({ error: "Gäste dürfen Social-Wall-Kommentare nicht löschen." }, { status: 403 });
+  }
   try {
     const { id: postId, commentId } = await context.params;
     const comment = await prisma.socialComment.findFirst({

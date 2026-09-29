@@ -190,7 +190,7 @@ export async function GET(request: Request) {
     Object.assign(result, { counts, shoppingLists, bills, billRecipients, allocations, correctionRequests: correctionsWithOpenQuantity, handoverTasks });
   }
   if (isMember) {
-    const [recentConsumptions, correctionRequests, correctionCandidates, consumptionSummary, openBillSummary] = await Promise.all([
+    const [recentConsumptions, memberCorrectionRequests, correctionCandidates, consumptionSummary, openBillSummary] = await Promise.all([
       prisma.consumption.findMany({
         where: { userId: user.id, voidedAt: null },
         include: { item: true },
@@ -220,11 +220,11 @@ export async function GET(request: Request) {
     ]);
     Object.assign(result, {
       recentConsumptions,
-      correctionRequests,
       correctionCandidates,
       consumptionSummary: { totalQuantity: consumptionSummary._sum.quantity ?? 0 },
       openBillTotalCents: openBillSummary._sum.totalCents ?? 0,
     });
+    if (!isManager) Object.assign(result, { correctionRequests: memberCorrectionRequests });
   }
 
   return NextResponse.json(result);

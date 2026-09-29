@@ -68,7 +68,8 @@ type Bootstrap = {
 const demoRoles: Role[] = ["ADMIN", "MANAGER", "USER", "GUEST"];
 type AppDownloadLink = { label: string; detail: string; href: string };
 type HomeAction = { tab: string; title: string; description: string; status: string; tone?: "alert" | "danger" };
-type HomeActionGroup = { title: string; description: string; actions: HomeAction[] };
+type HomeFilter = "all" | "admin" | "operations" | "community" | "personal";
+type HomeActionGroup = { id: Exclude<HomeFilter, "all">; filterLabel: string; title: string; description: string; actions: HomeAction[] };
 
 function publicHttpsUrl(value: string | undefined): string | null {
   if (!value) return null;
@@ -149,6 +150,7 @@ export function Dashboard() {
   const [message, setMessage] = useState("");
   const [loading, setLoading] = useState(false);
   const [tab, setTab] = useState("overview");
+  const [homeFilter, setHomeFilter] = useState<HomeFilter>("all");
   const [countValues, setCountValues] = useState<Record<string, CountValue>>({});
   const [showSetup, setShowSetup] = useState(false);
   const [initialAdminSetupAvailable, setInitialAdminSetupAvailable] = useState(false);
@@ -237,6 +239,7 @@ export function Dashboard() {
       if (!response.ok) throw new Error(body.error);
       setDemoToken(body.token);
       setTab("overview");
+      setHomeFilter("all");
       setSessionActive(true);
       setMessage(`Als lokale Demo-Rolle „${roleLabels[role]}“ angemeldet.`);
     } catch (error) {
@@ -260,6 +263,7 @@ export function Dashboard() {
       if (!response.ok) throw new Error(body.error ?? "Anmeldung fehlgeschlagen.");
       setDemoToken(null);
       setTab("overview");
+      setHomeFilter("all");
       setSessionActive(true);
       setMessage(`Als „${body.user.name}“ angemeldet.`);
     } catch (error) {
@@ -288,6 +292,7 @@ export function Dashboard() {
       if (!response.ok) throw new Error(body.error ?? "Erstzugang konnte nicht eingerichtet werden.");
       setDemoToken(null);
       setTab("overview");
+      setHomeFilter("all");
       setSessionActive(true);
       setShowSetup(false);
       setMessage("Administrationszugang wurde eingerichtet.");
@@ -301,6 +306,7 @@ export function Dashboard() {
     await fetch("/api/auth/logout", { method: "POST", credentials: "same-origin" });
     setDemoToken(null);
     setData(null);
+    setHomeFilter("all");
     setTab("overview");
     setSessionActive(false);
     setMessage("");
@@ -331,6 +337,7 @@ export function Dashboard() {
   const openBills = useMemo(() => data?.bills?.filter((bill) => bill.status === "OPEN").length ?? 0, [data]);
   const pendingCorrections = useMemo(() => data?.correctionRequests?.filter((correction) => correction.status === "PENDING").length ?? 0, [data]);
   const openShoppingLists = useMemo(() => data?.shoppingLists?.filter((list) => list.items.some((item) => !item.purchased)) ?? [], [data]);
+  const pendingInventoryCount = data?.pendingInventoryItems?.length ?? 0;
   if (showWelcome) {
     return <div className="welcome-screen"><img src="/skull.png" alt="Bonanzbar Totenkopf" /><h1>WELCOME<br /><small>IN DER BONANZBAR</small></h1></div>;
   }
@@ -369,49 +376,60 @@ export function Dashboard() {
   const alertTone = (active: boolean): HomeAction["tone"] => active ? "alert" : undefined;
   const actionGroups: HomeActionGroup[] = [
     ...(isAdmin ? [{
+      id: "admin" as const,
+      filterLabel: "Admin",
       title: "Verwaltung",
       description: "Stammdaten, Preise und redaktionelle Inhalte.",
       actions: [
-        { tab: "inventory", title: "Inventar", description: "Artikel & Freigaben", status: lowStock.length > 0 ? `${lowStock.length} nachbestellen` : "Bestand im Blick", tone: alertTone(lowStock.length > 0) },
+        { tab: "inventory", title: "Inventar", description: "Artikel & Freigaben", status: pendingInventoryCount > 0 ? `${pendingInventoryCount} Freigaben` : "Keine Freigaben", tone: alertTone(pendingInventoryCount > 0) },
         { tab: "users", title: "Mitglieder", description: "Konten & Rollen", status: `${data.users?.filter((user) => user.active).length ?? 0} aktiv` },
-        { tab: "pricing", title: "Preise", description: "Betriebsmodus & Tagesangebot", status: data.barSettings?.isOfficiallyOpen ? "Offiziell geöffnet" : "Helferbetrieb" },
+        { tab: "pricing", title: "Preise", description: "Modus & Angebot", status: data.barSettings?.isOfficiallyOpen ? "Offen" : "Helfer" },
         { tab: "recaps", title: "Rückblicke", description: "Konzerte veröffentlichen", status: `${data.eventRecaps?.length ?? 0} angelegt` },
         { tab: "ledgers", title: "Abrechnung", description: "Einnahmen & Ausgaben", status: `${data.eventLedgers?.length ?? 0} eröffnet` },
-        { tab: "reset", title: "Datenverwaltung", description: "Betriebsdaten zurücksetzen", status: "Nur Administration", tone: "danger" as const },
+        { tab: "reset", title: "Daten", description: "Betriebsdaten zurücksetzen", status: "Nur Admin", tone: "danger" as const },
       ],
     }] : []),
     ...(isManager ? [{
+      id: "operations" as const,
+      filterLabel: "Betrieb",
       title: "Betrieb",
       description: "Planung, Bestand und Abrechnung für den Barabend.",
       actions: [
-        { tab: "count", title: "Bestand", description: "Zählen & speichern", status: data.latestCount ? date(data.latestCount.countedAt) : "Noch nicht gezählt" },
-        { tab: "shopping", title: "Einkaufsliste", description: "Was fehlt noch?", status: openShoppingLists.length > 0 ? `${openShoppingLists.length} offen` : "Keine offenen Listen", tone: alertTone(openShoppingLists.length > 0) },
-        { tab: "bills", title: "Rechnungen", description: "Abrechnen & verwalten", status: openBills > 0 ? `${openBills} offen` : "Keine offenen Rechnungen" },
-        { tab: "allocations", title: "Umlagen", description: "Gemeinsame Kosten verteilen", status: "Auf aktive Mitglieder" },
-        { tab: "corrections", title: "Korrekturen", description: "Einträge prüfen", status: pendingCorrections > 0 ? `${pendingCorrections} offen` : "Keine offenen Anfragen", tone: alertTone(pendingCorrections > 0) },
-        { tab: "reports", title: "Verkaufsbericht", description: "Zwischen Zählungen auswerten", status: "Absatz im Überblick" },
-        { tab: "tasks", title: "Übergabe", description: "To-dos & Verantwortung", status: `${data.handoverTasks?.filter((task) => task.status !== "DONE").length ?? 0} offen` },
+        { tab: "count", title: "Bestand", description: "Zählen & sichern", status: data.latestCount ? date(data.latestCount.countedAt) : "Noch keine" },
+        { tab: "shopping", title: "Einkauf", description: "Fehlende Artikel", status: openShoppingLists.length > 0 ? `${openShoppingLists.length} offen` : "Keine offen", tone: alertTone(openShoppingLists.length > 0) },
+        { tab: "bills", title: "Rechnungen", description: "Abrechnen & verwalten", status: openBills > 0 ? `${openBills} offen` : "Erledigt" },
+        { tab: "allocations", title: "Umlagen", description: "Kosten verteilen", status: "Aktive Crew" },
+        { tab: "corrections", title: "Korrekturen", description: "Einträge prüfen", status: pendingCorrections > 0 ? `${pendingCorrections} offen` : "Erledigt", tone: alertTone(pendingCorrections > 0) },
+        { tab: "reports", title: "Verkauf", description: "Absatz auswerten", status: "Zählungen" },
       ],
     }] : []),
     {
+      id: "community",
+      filterLabel: "Crew",
       title: "Programm & Gemeinschaft",
       description: "Termine, Dienste und gemeinsame Informationen.",
       actions: [
-        { tab: "events", title: "Programm", description: canManageOps ? "Veranstaltungen & Dienste" : "Live-Musik & Tickets", status: upcomingEvents.length > 0 ? `${upcomingEvents.length} geplant` : "Noch nichts geplant" },
+        { tab: "events", title: "Programm", description: canManageOps ? "Veranstaltungen & Dienste" : "Live-Musik & Tickets", status: upcomingEvents.length > 0 ? `${upcomingEvents.length} geplant` : "Keine Termine" },
+        ...(isManager ? [{ tab: "tasks", title: "Übergabe", description: "Offene Aufgaben", status: `${data.handoverTasks?.filter((task) => task.status !== "DONE").length ?? 0} offen` }] : []),
         ...(isMember ? [{ tab: "notes", title: "Crew-Notizen", description: isManager ? "Infos veröffentlichen" : "Aktuelle Infos", status: `${data.notes?.filter((note) => isManager || note.pinned).length ?? 0} aktuell` }] : []),
         { tab: "social", title: "Social Wall", description: "Beiträge der Crew", status: `${data.socialPosts?.length ?? 0} aktuell` },
       ],
     },
     {
+      id: "personal",
+      filterLabel: isMember ? "Meine" : "Besuch",
       title: isMember ? "Meine Bonanzbar" : "Dein Besuch",
       description: isMember ? "Eigene Getränke und deine aktuellen Einträge." : "Getränke, Preise und Tagesangebot.",
       actions: [
-        ...(isMember ? [{ tab: "consume", title: "Meine Getränke", description: "Deinen Konsum eintragen", status: "Getränk eintragen" }] : []),
+        ...(isMember ? [{ tab: "consume", title: "Meine Getränke", description: "Deinen Konsum eintragen", status: "Eintragen" }] : []),
         ...(isGuestOnly ? [{ tab: "menu", title: "Getränkekarte", description: "Aktuelle Gastpreise", status: `${data.inventory.length} Getränke` }] : []),
       ],
     },
   ];
   const homeActions = actionGroups.flatMap((group) => group.actions);
+  const visibleActionGroups = homeFilter === "all"
+    ? actionGroups
+    : actionGroups.filter((group) => group.id === homeFilter);
   const homeIntro = isAdmin
     ? "Verwaltung, Betrieb und dein persönlicher Bereich sind jetzt in einem gemeinsamen Menü gebündelt."
     : isManager
@@ -419,7 +437,8 @@ export function Dashboard() {
       : isMember
         ? "Deine Getränke, Programm und alle Crew-Infos sind direkt erreichbar."
         : "Getränkekarte, Programm und die Bonanzbar-Community auf einen Blick.";
-  const currentAction = homeActions.find((action) => action.tab === tab);  const openTab = (nextTab: string) => {
+  const currentAction = homeActions.find((action) => action.tab === tab);
+  const openTab = (nextTab: string) => {
     setTab(nextTab);
     setMessage("");
     window.scrollTo({ top: 0, behavior: "smooth" });
@@ -439,15 +458,20 @@ export function Dashboard() {
       {tab === "overview" && <section className="content home-content">
         <div className="home-heading"><div><p className="eyebrow">BONANZBAR · CREW-BEREICH</p><h1>Alles an einem Ort.</h1><p>{homeIntro}</p></div><button className="secondary" onClick={() => void refresh()} disabled={loading}>{loading ? "Lädt..." : "Aktualisieren"}</button></div>
         <div className="action-groups" aria-label="Hauptmenü">
-          {actionGroups.map((group) => <section className="action-group" key={group.title}><div className="action-group-heading"><h2>{group.title}</h2><p>{group.description}</p></div><div className="action-menu">
-            {group.actions.map((action) => <button key={action.tab} type="button" className={`action-tile${action.tone ? ` ${action.tone}` : ""}`} onClick={() => openTab(action.tab)}>
-              <span className="action-number">{String(homeActions.findIndex((candidate) => candidate.tab === action.tab) + 1).padStart(2, "0")}</span>
+          {visibleActionGroups.map((group) => <section className="action-group" key={group.id}><div className="action-group-heading"><h2>{group.title}</h2><p>{group.description}</p></div><div className="action-menu">
+            {group.actions.map((action, index) => <button key={action.tab} type="button" className={`action-tile${action.tone ? ` ${action.tone}` : ""}`} onClick={() => openTab(action.tab)}>
+              <span className="action-number">{String(index + 1).padStart(2, "0")}</span>
               <span className="action-copy"><strong>{action.title}</strong><small>{action.description}</small></span>
               <span className="action-status">{action.status}</span>
             </button>)}
           </div></section>)}
         </div>
-        {canManageOps && lowStock.length > 0 && <section className="panel alert"><h2>Nachbestellung im Blick</h2>{lowStock.map((item) => <p key={item.id}>{item.name}: noch <b>{formatStockQuantity(item.onHand, item)}</b>; nachbestellen ab {formatStockQuantity(item.reorderLevel, item)}.</p>)}</section>}
+        {isAdmin && pendingInventoryCount > 0 && <section className="panel alert"><h2>Artikel zur Freigabe</h2>{(data.pendingInventoryItems ?? []).map((item) => <p key={item.id}><b>{item.name}</b>: aus der Einkaufsliste vorgeschlagen und noch nicht als Inventarartikel bestätigt.</p>)}</section>}
+        {!isAdmin && canManageOps && lowStock.length > 0 && <section className="panel alert"><h2>Nachbestellung im Blick</h2>{lowStock.map((item) => <p key={item.id}>{item.name}: noch <b>{formatStockQuantity(item.onHand, item)}</b>; nachbestellen ab {formatStockQuantity(item.reorderLevel, item)}.</p>)}</section>}
+        <nav className="dashboard-filter-nav" aria-label="Bereiche filtern">
+          <button type="button" className={homeFilter === "all" ? "active" : ""} aria-pressed={homeFilter === "all"} onClick={() => setHomeFilter("all")}>Start</button>
+          {actionGroups.map((group) => <button key={group.id} type="button" className={homeFilter === group.id ? "active" : ""} aria-pressed={homeFilter === group.id} onClick={() => setHomeFilter(group.id)}>{group.filterLabel}</button>)}
+        </nav>
       </section>}
 
       {isAdmin && tab === "inventory" && <section className="content"><section className="two-column"><section className="panel"><h1>Inventarartikel hinzufügen</h1><form onSubmit={(event) => void submit(event, "/api/inventory", (form) => ({ name: value(form, "name"), category: value(form, "category"), unit: value(form, "unit"), packageSize: Number(value(form, "packageSize")), reorderLevel: Number(value(form, "reorderLevel")), priceCents: Math.round(Number(value(form, "publicPrice")) * 100), helperPriceCents: Math.round(Number(value(form, "helperPrice")) * 100), guestPriceCents: Math.round(Number(value(form, "guestPrice")) * 100), trackInventory: checked(form, "trackInventory"), showInMenu: checked(form, "showInMenu") }))}><Field name="name" label="Name" /><Field name="category" label="Kategorie" /><Field name="unit" label="Einheit" initial="Flasche" /><Field name="packageSize" label="Gebindegröße (Einheiten je Gebinde)" type="number" initial="1" min="1" /><Field name="reorderLevel" label="Meldebestand (Einheiten)" type="number" initial="0" min="0" /><Field name="publicPrice" label="Regulärer Preis (EUR)" type="number" step="0.01" initial="0" min="0" /><Field name="helperPrice" label="Helferpreis (EUR)" type="number" step="0.01" initial="0" min="0" /><Field name="guestPrice" label="Gastpreis (EUR)" type="number" step="0.01" initial="0" min="0" /><InventoryModeFields /><button className="primary">Artikel hinzufügen</button></form></section><EditableInventoryCatalog items={data.inventory} request={request} setMessage={setMessage} onUpdated={refresh} /></section><PendingInventoryApprovals items={data.pendingInventoryItems ?? []} request={request} setMessage={setMessage} onApproved={refresh} /></section>}
@@ -465,7 +489,7 @@ export function Dashboard() {
       {isManager && tab === "corrections" && <CorrectionInbox corrections={data.correctionRequests ?? []} request={request} setMessage={setMessage} onUpdated={refresh} />}
       {isManager && tab === "reports" && <SalesReport counts={data.counts ?? []} request={request} setMessage={setMessage} />}
       {isManager && tab === "tasks" && <HandoverTaskBoard tasks={data.handoverTasks ?? []} assignees={data.billRecipients ?? []} request={request} setMessage={setMessage} onUpdated={refresh} />}
-      {!canManageOps && (isMember || isGuestOnly) && tab === "events" && <EventBoard events={data.events ?? []} request={request} setMessage={setMessage} onUpdated={refresh} canApply={!isGuestOnly} />}
+      {!canManageOps && (isMember || isGuestOnly) && tab === "events" && <EventBoard events={data.events ?? []} request={request} setMessage={setMessage} onUpdated={refresh} canApply={!isGuestOnly} showStatus={!isGuestOnly} />}
       {isMember && tab === "notes" && <NotesBoard notes={data.notes ?? []} events={data.events ?? []} canManage={isManager} request={request} setMessage={setMessage} onUpdated={refresh} />}
       {tab === "social" && <SocialWall posts={data.socialPosts ?? []} currentUserId={data.user.id} canSubmit canComment={isMember} canModerate={isAdmin} isGuest={isGuestOnly} request={request} setMessage={setMessage} onUpdated={refresh} />}
       {isGuestOnly && tab === "menu" && <section className="content two-column"><section className="panel"><h1>Getränkekarte</h1><p className="muted">Aktive Getränke und aktuelle Gastpreise.</p><GuestDrinkMenu items={menuItems} /></section><section className="panel"><h2>Tagesangebot</h2>{data.dailySpecial ? <><b>{data.dailySpecial.title}</b><p>{data.dailySpecial.description}</p><strong className="guest-special-price">{formatCurrency(data.dailySpecial.priceCents)}</strong></> : <p className="muted">Heute gibt es kein aktives Tagesangebot.</p>}</section></section>}
@@ -516,7 +540,7 @@ function EditableUserList({ users, currentUserId, request, setMessage, onUpdated
       setMessage(error instanceof Error ? error.message : "Mitglied konnte nicht aktualisiert werden.");
     }
   };
-  return <section className="panel"><h2>Mitglieder</h2><p className="muted">Klicke auf ein Mitglied, um dessen Daten zu bearbeiten.</p><div className="member-list">{users.map((user) => <div className="member-record" key={user.id}><button type="button" className={`member-summary ${editingId === user.id ? "selected" : ""}`} onClick={() => setEditingId(editingId === user.id ? null : user.id)} aria-expanded={editingId === user.id}><span><b>{user.name}</b><small>{user.email} · {user.priceMode && priceModeLabels[user.priceMode]}</small><span className="pill">{user.roles?.map((assignedRole) => roleLabels[assignedRole]).join(" · ")}</span>{!user.active && <span className="inactive-label">Deaktiviert</span>}</span><span className="edit-link">Bearbeiten</span></button>{editingId === user.id && <form className="member-edit-form" onSubmit={(event) => void updateUser(event, user)}><div className="edit-heading"><b>{user.name} bearbeiten</b><button type="button" className="secondary compact-button" onClick={() => setEditingId(null)}>Abbrechen</button></div>{user.id === currentUserId && user.roles?.includes("ADMIN") && <p className="muted">Zum Schutz kannst du dein eigenes Administrationskonto weder deaktivieren noch die Administrationsrolle entfernen.</p>}<div className="approval-fields"><Field name="name" label="Name" initial={user.name} /><Field name="email" label="E-Mail" type="email" initial={user.email} autoComplete="email" /><Field name="password" label="Neues Passwort (optional)" type="password" autoComplete="new-password" required={false} /></div><RoleSelection selectedRoles={user.roles ?? []} /><PriceModeSelect name="priceMode" initial={user.priceMode ?? "DYNAMIC"} /><fieldset className="role-selection"><legend>Status</legend><label><input name="active" type="checkbox" defaultChecked={user.active} />Konto ist aktiv</label></fieldset><button className="primary">Änderungen speichern</button></form>}</div>)}</div></section>;
+  return <section className="panel"><h2>Mitglieder</h2><p className="muted">Klicke auf ein Mitglied, um dessen Daten zu bearbeiten.</p><div className="member-list">{users.map((user) => <div className="member-record" key={user.id}><button type="button" className={`member-summary ${editingId === user.id ? "selected" : ""}`} onClick={() => setEditingId(editingId === user.id ? null : user.id)} aria-expanded={editingId === user.id} aria-label={`${user.name} bearbeiten`}><span><b>{user.name}</b><small>{user.email} · {user.priceMode && priceModeLabels[user.priceMode]}</small><span className="pill">{user.roles?.map((assignedRole) => roleLabels[assignedRole]).join(" · ")}</span>{!user.active && <span className="inactive-label">Deaktiviert</span>}</span><span className="edit-link" aria-hidden="true">Bearbeiten</span></button>{editingId === user.id && <form className="member-edit-form" onSubmit={(event) => void updateUser(event, user)}><div className="edit-heading"><b>{user.name} bearbeiten</b><button type="button" className="secondary compact-button" onClick={() => setEditingId(null)}>Abbrechen</button></div>{user.id === currentUserId && user.roles?.includes("ADMIN") && <p className="muted">Zum Schutz kannst du dein eigenes Administrationskonto weder deaktivieren noch die Administrationsrolle entfernen.</p>}<div className="approval-fields"><Field name="name" label="Name" initial={user.name} /><Field name="email" label="E-Mail" type="email" initial={user.email} autoComplete="email" /><Field name="password" label="Neues Passwort (optional)" type="password" autoComplete="new-password" required={false} /></div><RoleSelection selectedRoles={user.roles ?? []} /><PriceModeSelect name="priceMode" initial={user.priceMode ?? "DYNAMIC"} /><fieldset className="role-selection"><legend>Status</legend><label><input name="active" type="checkbox" defaultChecked={user.active} />Konto ist aktiv</label></fieldset><button className="primary">Änderungen speichern</button></form>}</div>)}</div></section>;
 }
 function PriceModeSelect({ name, initial = "DYNAMIC" }: { name: string; initial?: PriceMode }) { return <label>Preisregel<select name={name} defaultValue={initial}>{priceModes.map((mode) => <option value={mode} key={mode}>{priceModeLabels[mode]}</option>)}</select></label>; }
 function Metric({ label, value, accent, onClick }: { label: string; value: string; accent?: boolean; onClick?: () => void }) {
@@ -563,25 +587,32 @@ function parseEuroCents(input: string) {
 function CostAllocationPanel({ recipients, allocations, request, setMessage, onUpdated }: { recipients: User[]; allocations: CostAllocation[]; request: (path: string, init?: RequestInit) => Promise<unknown>; setMessage: (value: string) => void; onUpdated: () => Promise<void> }) {
   const [title, setTitle] = useState("");
   const [amount, setAmount] = useState("");
+  const [selectedRecipientIds, setSelectedRecipientIds] = useState(() => recipients.map((recipient) => recipient.id));
   const totalCents = parseEuroCents(amount);
-  const shares = totalCents === null ? [] : recipients.map((recipient, index) => ({
+  const selectedRecipients = recipients.filter((recipient) => selectedRecipientIds.includes(recipient.id));
+  const shares = totalCents === null || selectedRecipients.length === 0 ? [] : selectedRecipients.map((recipient, index) => ({
     recipient,
-    amountCents: Math.floor(totalCents / recipients.length) + (index < totalCents % recipients.length ? 1 : 0),
+    amountCents: Math.floor(totalCents / selectedRecipients.length) + (index < totalCents % selectedRecipients.length ? 1 : 0),
   }));
+  const toggleRecipient = (recipientId: string) => {
+    setSelectedRecipientIds((current) => current.includes(recipientId)
+      ? current.filter((id) => id !== recipientId)
+      : [...current, recipientId]);
+  };
   const create = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    if (totalCents === null || totalCents < 1) return;
+    if (totalCents === null || totalCents < 1 || selectedRecipients.length === 0) return;
     try {
-      await request("/api/allocations", { method: "POST", body: JSON.stringify({ title, totalCents }) });
+      await request("/api/allocations", { method: "POST", body: JSON.stringify({ title, totalCents, recipientIds: selectedRecipients.map((recipient) => recipient.id) }) });
       setTitle("");
       setAmount("");
-      setMessage("Umlage wurde als offene Rechnung für alle aktiven Mitglieder gebucht.");
+      setMessage(`Umlage wurde für ${selectedRecipients.length} Mitglied${selectedRecipients.length === 1 ? "" : "er"} gebucht.`);
       await onUpdated();
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Umlage konnte nicht gebucht werden.");
     }
   };
-  return <section className="content two-column"><section className="panel"><h1>Kosten umlegen</h1><p className="muted">Der Betrag wird gleichmäßig auf alle aktiven Mitglieder verteilt. Restcent erhalten die ersten Mitglieder der alphabetischen Liste.</p><form onSubmit={(event) => void create(event)}><label>Verwendungszweck<input value={title} maxLength={300} onChange={(event) => setTitle(event.currentTarget.value)} required /></label><label>Gesamtbetrag in EUR<input value={amount} inputMode="decimal" placeholder="0,00" onChange={(event) => setAmount(event.currentTarget.value)} required /></label>{shares.length > 0 && <div className="allocation-preview"><h3>Verteilung vor dem Buchen</h3>{shares.map((share) => <div className="row" key={share.recipient.id}><span>{share.recipient.name}</span><b>{formatCurrency(share.amountCents)}</b></div>)}</div>}<button className="primary" disabled={!title.trim() || totalCents === null || totalCents < 1 || recipients.length === 0}>Umlage verbindlich buchen</button></form></section><section className="panel"><h2>Gebuchte Umlagen</h2>{allocations.length === 0 ? <p className="muted">Noch keine Umlage gebucht.</p> : <div className="allocation-history">{allocations.map((allocation) => <article className="event-card" key={allocation.id}><div className="event-heading"><div><h3>{allocation.title}</h3><small>{dateTime(allocation.createdAt)} · {formatCurrency(allocation.totalCents)}</small></div></div>{allocation.bills.map((bill) => <div className="row" key={bill.id}><span>{bill.recipient.name}<small>{bill.status === "OPEN" ? "offene Rechnung" : "bezahlt"}</small></span><b>{formatCurrency(bill.totalCents)}</b></div>)}</article>)}</div>}</section></section>;
+  return <section className="content two-column"><section className="panel"><h1>Kosten umlegen</h1><p className="muted">Wähle die beteiligten Mitglieder. Der Betrag wird gleichmäßig verteilt; Restcent erhalten die ersten ausgewählten Namen.</p><form onSubmit={(event) => void create(event)}><label>Verwendungszweck<input value={title} maxLength={300} onChange={(event) => setTitle(event.currentTarget.value)} required /></label><label>Gesamtbetrag in EUR<input value={amount} inputMode="decimal" placeholder="0,00" onChange={(event) => setAmount(event.currentTarget.value)} required /></label><fieldset className="allocation-recipients"><legend>Beteiligte Mitglieder</legend><div className="allocation-recipient-actions"><button type="button" className="secondary compact-button" onClick={() => setSelectedRecipientIds(recipients.map((recipient) => recipient.id))}>Alle wählen</button><button type="button" className="secondary compact-button" onClick={() => setSelectedRecipientIds([])}>Auswahl leeren</button></div><div className="allocation-recipient-list">{recipients.map((recipient) => <label className="checkbox-label" key={recipient.id}><input type="checkbox" checked={selectedRecipientIds.includes(recipient.id)} onChange={() => toggleRecipient(recipient.id)} />{recipient.name}</label>)}</div></fieldset>{shares.length > 0 && <div className="allocation-preview"><h3>Verteilung vor dem Buchen</h3>{shares.map((share) => <div className="row" key={share.recipient.id}><span>{share.recipient.name}</span><b>{formatCurrency(share.amountCents)}</b></div>)}</div>}<button className="primary" disabled={!title.trim() || totalCents === null || totalCents < 1 || selectedRecipients.length === 0}>Umlage verbindlich buchen</button></form></section><section className="panel"><h2>Gebuchte Umlagen</h2>{allocations.length === 0 ? <p className="muted">Noch keine Umlage gebucht.</p> : <div className="allocation-history">{allocations.map((allocation) => <article className="event-card" key={allocation.id}><div className="event-heading"><div><h3>{allocation.title}</h3><small>{dateTime(allocation.createdAt)} · {formatCurrency(allocation.totalCents)}</small></div></div>{allocation.bills.map((bill) => <div className="row" key={bill.id}><span>{bill.recipient.name}<small>{bill.status === "OPEN" ? "offene Rechnung" : "bezahlt"}</small></span><b>{formatCurrency(bill.totalCents)}</b></div>)}</article>)}</div>}</section></section>;
 }
 function CorrectionRequestPanel({ consumptions, corrections, request, setMessage, onUpdated }: { consumptions: Consumption[]; corrections: ConsumptionCorrection[]; request: (path: string, init?: RequestInit) => Promise<unknown>; setMessage: (value: string) => void; onUpdated: () => Promise<void> }) {
   const availableItems = Array.from(new Map(consumptions.filter((consumption) => !consumption.voidedAt).map((consumption) => [consumption.item.id, consumption.item])).values());
@@ -652,6 +683,7 @@ function HomepageProgramImport({ request, setMessage, onUpdated }: { request: (p
 }
 function EventManagement({ events, request, setMessage, onUpdated }: { events: BarEvent[]; request: (path: string, init?: RequestInit) => Promise<unknown>; setMessage: (value: string) => void; onUpdated: () => Promise<void> }) {
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [updatingApplicationId, setUpdatingApplicationId] = useState<string | null>(null);
   const create = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     const form = event.currentTarget;
@@ -721,12 +753,15 @@ function EventManagement({ events, request, setMessage, onUpdated }: { events: B
     }
   };
   const updateApplication = async (event: BarEvent, application: EventApplication, status: EventApplicationStatus) => {
+    setUpdatingApplicationId(application.id);
     try {
       await request(`/api/events/${event.id}/applications/${application.id}`, { method: "PATCH", body: JSON.stringify({ status }) });
-      setMessage(`Bewerbung von ${application.user?.name ?? "dem Mitglied"} wurde ${applicationStatusLabels[status].toLocaleLowerCase("de-DE")}.`);
       await onUpdated();
+      setMessage(`Bewerbung von ${application.user?.name ?? "dem Mitglied"} wurde ${applicationStatusLabels[status].toLocaleLowerCase("de-DE")}.`);
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Dienstbewerbung konnte nicht aktualisiert werden.");
+    } finally {
+      setUpdatingApplicationId(null);
     }
   };
   return <section className="content two-column">
@@ -756,11 +791,11 @@ function EventManagement({ events, request, setMessage, onUpdated }: { events: B
         <label>Dienste und Sollbesetzung<textarea name="duties" rows={5} defaultValue={event.duties.map((duty) => `${duty.label};${duty.slots}`).join("\n")} /><small>Ein Dienst je Zeile im Format „Bezeichnung; Anzahl“. Dienste mit Bewerbungen können nicht entfernt werden.</small></label>
         <label>Status<select name="status" defaultValue={event.status}><option value="DRAFT">Entwurf</option><option value="PUBLISHED">Veröffentlicht</option><option value="CANCELLED">Abgesagt</option></select></label>
         <button className="primary">Änderungen speichern</button>
-      </form> : <><EventHeader event={event} /><div className="event-actions"><button type="button" className="secondary compact-button" onClick={() => setEditingId(event.id)}>Bearbeiten</button>{event.status !== "PUBLISHED" && <button type="button" className="secondary compact-button" onClick={() => void updateStatus(event, "PUBLISHED")}>Veröffentlichen</button>}{event.status !== "DRAFT" && <button type="button" className="secondary compact-button" onClick={() => void updateStatus(event, "DRAFT")}>Als Entwurf</button>}{event.status !== "CANCELLED" && <button type="button" className="danger-button compact-button" onClick={() => void updateStatus(event, "CANCELLED")}>Absagen</button>}</div>{event.duties.length === 0 ? <p className="muted">Noch keine Dienste angelegt.</p> : <div className="duty-list">{event.duties.map((duty) => { const confirmed = duty.applications.filter((application) => application.status === "CONFIRMED").length; return <section className="duty-card" key={duty.id}><div><b>{duty.label}</b><small>{confirmed} von {duty.slots} bestätigt</small></div>{duty.applications.length === 0 ? <small className="muted">Noch keine Bewerbungen.</small> : <div className="application-list">{duty.applications.map((application) => <div className="application-row" key={application.id}><span><b>{application.user?.name ?? "Mitglied"}</b><small>{application.note || application.user?.email}</small></span><span className="application-actions"><span className={`application-status ${application.status.toLocaleLowerCase("en-US")}`}>{applicationStatusLabels[application.status]}</span>{application.status !== "CONFIRMED" && <button type="button" className="secondary compact-button" onClick={() => void updateApplication(event, application, "CONFIRMED")}>Bestätigen</button>}{application.status !== "DECLINED" && <button type="button" className="danger-button compact-button" onClick={() => void updateApplication(event, application, "DECLINED")}>Ablehnen</button>}</span></div>)}</div>}</section>; })}</div>}</>}</article>)}</div>}
+      </form> : <><EventHeader event={event} /><div className="event-actions"><button type="button" className="secondary compact-button" onClick={() => setEditingId(event.id)}>Bearbeiten</button>{event.status !== "PUBLISHED" && <button type="button" className="secondary compact-button" onClick={() => void updateStatus(event, "PUBLISHED")}>Veröffentlichen</button>}{event.status !== "DRAFT" && <button type="button" className="secondary compact-button" onClick={() => void updateStatus(event, "DRAFT")}>Als Entwurf</button>}{event.status !== "CANCELLED" && <button type="button" className="danger-button compact-button" onClick={() => void updateStatus(event, "CANCELLED")}>Absagen</button>}</div>{event.duties.length === 0 ? <p className="muted">Noch keine Dienste angelegt.</p> : <div className="duty-list">{event.duties.map((duty) => { const confirmed = duty.applications.filter((application) => application.status === "CONFIRMED").length; return <section className="duty-card" key={duty.id}><div><b>{duty.label}</b><small>{confirmed} von {duty.slots} bestätigt</small></div>{duty.applications.length === 0 ? <small className="muted">Noch keine Bewerbungen.</small> : <div className="application-list">{duty.applications.map((application) => <div className="application-row" key={application.id}><span><b>{application.user?.name ?? "Mitglied"}</b><small>{application.note || application.user?.email}</small></span><span className="application-actions"><span className={`application-status ${application.status.toLocaleLowerCase("en-US")}`}>{applicationStatusLabels[application.status]}</span>{application.status !== "CONFIRMED" && <button type="button" className="secondary compact-button" disabled={updatingApplicationId === application.id} onClick={() => void updateApplication(event, application, "CONFIRMED")}>{updatingApplicationId === application.id ? "Speichert..." : "Bestätigen"}</button>}{application.status !== "DECLINED" && <button type="button" className="danger-button compact-button" disabled={updatingApplicationId === application.id} onClick={() => void updateApplication(event, application, "DECLINED")}>Ablehnen</button>}</span></div>)}</div>}</section>; })}</div>}</>}</article>)}</div>}
     </section>
   </section>;
 }
-function EventBoard({ events, request, setMessage, onUpdated, canApply }: { events: BarEvent[]; request: (path: string, init?: RequestInit) => Promise<unknown>; setMessage: (value: string) => void; onUpdated: () => Promise<void>; canApply: boolean }) {
+function EventBoard({ events, request, setMessage, onUpdated, canApply, showStatus }: { events: BarEvent[]; request: (path: string, init?: RequestInit) => Promise<unknown>; setMessage: (value: string) => void; onUpdated: () => Promise<void>; canApply: boolean; showStatus: boolean }) {
   const apply = async (event: BarEvent, duty: EventDuty) => {
     try {
       await request(`/api/events/${event.id}/applications`, { method: "POST", body: JSON.stringify({ dutyId: duty.id }) });
@@ -780,9 +815,12 @@ function EventBoard({ events, request, setMessage, onUpdated, canApply }: { even
     }
   };
   const upcoming = events.filter((event) => new Date(event.startsAt) >= new Date());
-  return <section className="content"><section className="panel"><h1>Veranstaltungen</h1><p className="muted">{canApply ? "Hier findest du veröffentlichte Termine und kannst dich für freie Dienste eintragen." : "Hier findest du veröffentlichte Termine, Bandinfos und Tickets."}</p>{upcoming.length === 0 ? <p className="muted">Zurzeit sind keine zukünftigen Veranstaltungen veröffentlicht.</p> : <div className="event-list">{upcoming.map((event) => <article className="event-card" key={event.id}><EventHeader event={event} />{canApply && (event.duties.length === 0 ? <p className="muted">Für diese Veranstaltung sind noch keine Dienste eingetragen.</p> : <div className="duty-list">{event.duties.map((duty) => { const application = duty.applications[0]; return <section className="duty-card" key={duty.id}><div><b>{duty.label}</b><small>{duty.slots} benötigte Person{duty.slots === 1 ? "" : "en"}</small></div>{application ? <span className="application-actions"><span className={`application-status ${application.status.toLocaleLowerCase("en-US")}`}>{applicationStatusLabels[application.status]}</span>{application.status === "APPLIED" && <button type="button" className="danger-button compact-button" onClick={() => void withdraw(event, application)}>Zurückziehen</button>}</span> : <button type="button" className="secondary compact-button" onClick={() => void apply(event, duty)}>Bewerben</button>}</section>; })}</div>)}</article>)}</div>}</section></section>;
+  const confirmedDuties = upcoming.flatMap((event) => event.duties.flatMap((duty) => duty.applications
+    .filter((application) => application.status === "CONFIRMED")
+    .map((application) => ({ event, duty, application }))));
+  return <section className="content">{canApply && confirmedDuties.length > 0 && <section className="confirmed-events"><div><p className="eyebrow">DEINE ZUSAGEN</p><h2>Bestätigte Termine</h2></div><div className="confirmed-event-list">{confirmedDuties.map(({ event, duty, application }) => <article className="confirmed-event-card" key={application.id}><span><small>{dateTime(event.startsAt)}{event.location ? ` · ${event.location}` : ""}</small><b>{event.title}</b><small>Dienst: {duty.label}</small></span><span className="status-tag is-success">Bestätigt</span></article>)}</div></section>}<section className="panel"><h1>Veranstaltungen</h1><p className="muted">{canApply ? "Hier findest du veröffentlichte Termine und kannst dich für freie Dienste eintragen." : "Hier findest du veröffentlichte Termine, Bandinfos und Tickets."}</p>{upcoming.length === 0 ? <p className="muted">Zurzeit sind keine zukünftigen Veranstaltungen veröffentlicht.</p> : <div className="event-list">{upcoming.map((event) => <article className="event-card" key={event.id}><EventHeader event={event} showStatus={showStatus} />{canApply && (event.duties.length === 0 ? <p className="muted">Für diese Veranstaltung sind noch keine Dienste eingetragen.</p> : <div className="duty-list">{event.duties.map((duty) => { const application = duty.applications[0]; return <section className="duty-card" key={duty.id}><div><b>{duty.label}</b><small>{duty.slots} benötigte Person{duty.slots === 1 ? "" : "en"}</small></div>{application ? <span className="application-actions"><span className={`application-status ${application.status.toLocaleLowerCase("en-US")}`}>{applicationStatusLabels[application.status]}</span>{application.status === "APPLIED" && <button type="button" className="danger-button compact-button" onClick={() => void withdraw(event, application)}>Zurückziehen</button>}</span> : <button type="button" className="secondary compact-button" onClick={() => void apply(event, duty)}>Bewerben</button>}</section>; })}</div>)}</article>)}</div>}</section></section>;
 }
-function EventHeader({ event }: { event: BarEvent }) { return <div className="event-heading"><div><h3>{event.title}</h3><small>{dateTime(event.startsAt)}{event.endsAt ? ` – ${dateTime(event.endsAt)}` : ""}{event.location ? ` · ${event.location}` : ""}</small></div><span className={`event-status ${event.status.toLocaleLowerCase("en-US")}`}>{event.status === "PUBLISHED" ? "Veröffentlicht" : event.status === "CANCELLED" ? "Abgesagt" : "Entwurf"}</span>{event.bandImageUrls[0] && <a className="event-poster" href={event.bandImageUrls[0]} target="_blank" rel="noreferrer"><img src={event.bandImageUrls[0]} alt={`Poster zu ${event.title}`} /></a>}{event.description && <p>{event.description}</p>}{event.bandInfo && <p>{event.bandInfo}</p>}{event.sourceUrl && <p className="muted">Quelle: <a href={event.sourceUrl} target="_blank" rel="noreferrer">Bonanzbar-Homepage ↗</a></p>}{(event.bandHomepageUrl || event.youtubeUrl || event.ticketUrl) && <div className="event-links">{event.bandHomepageUrl && <a href={event.bandHomepageUrl} target="_blank" rel="noreferrer">Band-Homepage ↗</a>}{event.youtubeUrl && <a href={event.youtubeUrl} target="_blank" rel="noreferrer">Video ↗</a>}{event.ticketUrl && <a href={event.ticketUrl} target="_blank" rel="noreferrer">Tickets ↗</a>}</div>}</div>; }
+function EventHeader({ event, showStatus = true }: { event: BarEvent; showStatus?: boolean }) { return <div className="event-heading"><div><h3>{event.title}</h3><small>{dateTime(event.startsAt)}{event.endsAt ? ` – ${dateTime(event.endsAt)}` : ""}{event.location ? ` · ${event.location}` : ""}</small></div>{showStatus && <span className={`event-status ${event.status.toLocaleLowerCase("en-US")}`}>{event.status === "PUBLISHED" ? "Veröffentlicht" : event.status === "CANCELLED" ? "Abgesagt" : "Entwurf"}</span>}{event.bandImageUrls[0] && <a className="event-poster" href={event.bandImageUrls[0]} target="_blank" rel="noreferrer"><img src={event.bandImageUrls[0]} alt={`Poster zu ${event.title}`} /></a>}{event.description && <p>{event.description}</p>}{event.bandInfo && <p>{event.bandInfo}</p>}{event.sourceUrl && <p className="muted">Quelle: <a href={event.sourceUrl} target="_blank" rel="noreferrer">Bonanzbar-Homepage ↗</a></p>}{(event.bandHomepageUrl || event.youtubeUrl || event.ticketUrl) && <div className="event-links">{event.bandHomepageUrl && <a href={event.bandHomepageUrl} target="_blank" rel="noreferrer">Band-Homepage ↗</a>}{event.youtubeUrl && <a href={event.youtubeUrl} target="_blank" rel="noreferrer">Video ↗</a>}{event.ticketUrl && <a href={event.ticketUrl} target="_blank" rel="noreferrer">Tickets ↗</a>}</div>}</div>; }
 function NotesBoard({ notes, events, canManage, request, setMessage, onUpdated }: { notes: BulletinNote[]; events: BarEvent[]; canManage: boolean; request: (path: string, init?: RequestInit) => Promise<unknown>; setMessage: (value: string) => void; onUpdated: () => Promise<void> }) {
   const create = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -822,7 +860,7 @@ function NotesBoard({ notes, events, canManage, request, setMessage, onUpdated }
       setMessage(error instanceof Error ? error.message : "Notiz konnte nicht gelöscht werden.");
     }
   };
-  const list = <section className="panel"><h2>{canManage ? "Aktuelle Notizen" : "Notizen der Barleitung"}</h2>{notes.length === 0 ? <p className="muted">Zurzeit gibt es keine Notizen.</p> : <div className="note-list">{notes.map((note) => <article className={`note-card ${note.pinned ? "pinned" : ""}`} key={note.id}><div className="note-heading"><span><b>{note.title}</b><small>{date(note.createdAt)}{note.event ? ` · ${note.event.title}` : ""}</small></span>{note.pinned && <span className="pill">Angeheftet</span>}</div><p>{note.body}</p>{canManage && <div className="note-actions"><button type="button" className="secondary compact-button" onClick={() => void update(note, { pinned: !note.pinned }, note.pinned ? "Notiz gelöst." : "Notiz angeheftet.")}>{note.pinned ? "Lösen" : "Anheften"}</button><button type="button" className="danger-button compact-button" onClick={() => void remove(note)}>Löschen</button></div>}</article>)}</div>}</section>;
+  const list = <section className="panel"><h2>{canManage ? "Aktuelle Notizen" : "Notizen der Barleitung"}</h2>{notes.length === 0 ? <p className="muted">Zurzeit gibt es keine Notizen.</p> : <div className="note-list">{notes.map((note) => <article className={`note-card ${note.pinned ? "pinned" : ""}`} key={note.id}><div className="note-heading"><span><b>{note.title}</b><small>{date(note.createdAt)}{note.event ? ` · ${note.event.title}` : ""}</small></span>{note.pinned && <span className="status-tag is-accent">Angeheftet</span>}</div><p>{note.body}</p>{canManage && <div className="note-actions"><button type="button" className="secondary compact-button" onClick={() => void update(note, { pinned: !note.pinned }, note.pinned ? "Notiz gelöst." : "Notiz angeheftet.")}>{note.pinned ? "Lösen" : "Anheften"}</button><button type="button" className="danger-button compact-button" onClick={() => void remove(note)}>Löschen</button></div>}</article>)}</div>}</section>;
   if (!canManage) return <section className="content">{list}</section>;
   return <section className="content two-column"><section className="panel"><h1>Notiz veröffentlichen</h1><form onSubmit={(event) => void create(event)}><Field name="title" label="Titel" /><label>Inhalt<textarea name="body" rows={6} required /></label><label>Veranstaltung (optional)<select name="eventId" defaultValue=""><option value="">Keine Zuordnung</option>{events.map((event) => <option value={event.id} key={event.id}>{event.title}</option>)}</select></label><label className="checkbox-label"><input name="pinned" type="checkbox" />Für alle anheften</label><button className="primary">Notiz veröffentlichen</button></form></section>{list}</section>;
 }

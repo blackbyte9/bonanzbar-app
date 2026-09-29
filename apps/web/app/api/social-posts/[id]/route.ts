@@ -33,6 +33,9 @@ export async function PATCH(request: Request, context: { params: Promise<{ id: s
 export async function DELETE(request: Request, context: { params: Promise<{ id: string }> }) {
   const user = await authenticate(request);
   if (user instanceof Response) return user;
+  if (hasRole(user.roles, "GUEST") && !hasRole(user.roles, "USER")) {
+    return NextResponse.json({ error: "Gäste dürfen Social-Wall-Beiträge nicht löschen." }, { status: 403 });
+  }
   try {
     const { id } = await context.params;
     const post = await prisma.socialPost.findUnique({ where: { id }, select: { authorId: true } });
